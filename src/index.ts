@@ -3,27 +3,43 @@
 import * as cmd from 'commander';
 import figlet from 'figlet';
 import PackageResolver from './package-resolver.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const program = new cmd.Command('upm');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-const sayHello = () => {
+const showGraphic = () => {
+  console.log();
   console.log(
     figlet.textSync('_UPM_', {
       font: 'Ghost',
       horizontalLayout: 'default',
       verticalLayout: 'default',
-      width: 80,
       whitespaceBreak: true
     })
   );
+  console.log();
 };
 
-program
-  .command('hello')
-  .description('Say hello to nup!')
-  .action(() => {
-    sayHello();
-  });
+const showVersion = () => {
+  const packagePath = path.join(__dirname, '../package.json');
+  const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+  console.log(`Version: ${packageJson.version}`);
+};
+
+program.helpOption('-?', 'Display help for command');
+
+program.option('-V, --version', 'Output the version number.').action(() => {
+  const options = program.opts();
+  if (options.version) {
+    showVersion();
+  } else {
+    showGraphic();
+  }
+});
 
 program
   .command('install')
