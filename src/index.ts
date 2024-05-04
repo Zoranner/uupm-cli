@@ -26,12 +26,22 @@ program
   });
 
 program
-  .command('get')
-  .description('Get a nuget package to unity package.')
-  .argument('<name>', 'NuGet package name.')
-  .action((name) => {
+  .command('install')
+  .alias('i')
+  .description('Install a package.')
+  .option('-N, --nuget', 'Install from NuGet package.')
+  .argument('<name>', 'Package name to install.')
+  .action((name, options) => {
     const resolver = new PackageResolver();
-    resolver.recursionResolve(name);
+    console.log(options);
+    if (options.nuget) {
+      console.log(`Installing NuGet package: ${name}`);
+      // 处理 NuGet 源的包
+      resolver.recursionResolve(name);
+    } else {
+      console.log(`Installing package: ${name}`);
+      // 处理 Unity 源的包
+    }
   });
 
 program.parse(process.argv);
