@@ -4,11 +4,11 @@ import * as cmd from 'commander';
 import figlet from 'figlet';
 import PackageResolver from './package-resolver.js';
 
-const program = new cmd.Command('nup');
+const program = new cmd.Command('upm');
 
 const sayHello = () => {
   console.log(
-    figlet.textSync('nup!', {
+    figlet.textSync('_UPM_', {
       font: 'Ghost',
       horizontalLayout: 'default',
       verticalLayout: 'default',

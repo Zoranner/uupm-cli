@@ -1,12 +1,12 @@
 {
-  "name": "@nup/cli",
-  "version": "0.0.1",
+  "name": "@upm/cli",
+  "version": "0.0.2",
   "description": "",
   "author": "Zoranner",
   "license": "MIT",
   "exports": "./index.js",
   "bin": {
-    "nup": "dist/index.js"
+    "upm": "dist/index.js"
   },
   "engines": {
     "node": "^18.17.0 || >=20.5.0"
