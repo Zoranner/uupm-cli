@@ -30,9 +30,7 @@ const showVersion = () => {
   console.log(`Version: ${packageJson.version}`);
 };
 
-program.helpOption('-?', 'Display help for command');
-
-program.option('-V, --version', 'Output the version number.').action(() => {
+program.option('-v, --version', 'Output the version number.').action(() => {
   const options = program.opts();
   if (options.version) {
     showVersion();
@@ -45,13 +43,12 @@ program
   .command('install')
   .alias('i')
   .description('Install a package.')
-  .option('-N, --nuget', 'Install from NuGet package.')
+  .option('-n, --nuget', 'Install package from NuGet.')
   .argument('<name>', 'Package name to install.')
   .action((name, options) => {
-    const resolver = new PackageResolver();
-    console.log(options);
+    const resolver = new NuGetPackageResolver();
     if (options.nuget) {
-      console.log(`Installing NuGet package: ${name}`);
+      console.log(`Installing package from NuGet: ${name}`);
       // 处理 NuGet 源的包
       resolver.recursionResolve(name);
     } else {
