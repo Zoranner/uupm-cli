@@ -8,7 +8,7 @@ import fse from 'fs-extra';
 import xml2js from 'xml2js';
 import { Queue } from 'typescript-collections';
 
-export default class PackageResolver {
+export default class NuGetPackageResolver {
   private recursion: boolean = false;
   private pascalName: string = '';
   private kebabName: string = '';

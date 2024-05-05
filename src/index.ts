@@ -2,10 +2,10 @@
 
 import * as cmd from 'commander';
 import figlet from 'figlet';
-import PackageResolver from './package-resolver.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import NuGetPackageResolver from './actions/resolvers/nuget-package-resolver.js';
 
 const program = new cmd.Command('upm');
 const __filename = fileURLToPath(import.meta.url);
