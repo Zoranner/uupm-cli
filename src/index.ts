@@ -1,37 +1,17 @@
 #!/usr/bin/env node
 
 import * as cmd from 'commander';
-import figlet from 'figlet';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import NuGetPackageResolver from './actions/resolvers/nuget-package-resolver.js';
+import showVersion from './actions/show-version.js';
+import showGraphic from './actions/show-graphic.js';
+import {
+  resolveNugetPackage,
+  resolvePackage
+} from './actions/resolve-package.js';
 
-const program = new cmd.Command('upm');
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const command = new cmd.Command('upm');
 
-const showGraphic = () => {
-  console.log();
-  console.log(
-    figlet.textSync('_UPM_', {
-      font: 'Ghost',
-      horizontalLayout: 'default',
-      verticalLayout: 'default',
-      whitespaceBreak: true
-    })
-  );
-  console.log();
-};
-
-const showVersion = () => {
-  const packagePath = path.join(__dirname, '../package.json');
-  const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
-  console.log(`Version: ${packageJson.version}`);
-};
-
-program.option('-v, --version', 'Output the version number.').action(() => {
-  const options = program.opts();
+command.option('-v, --version', 'output the version number.').action(() => {
+  const options = command.opts();
   if (options.version) {
     showVersion();
   } else {
@@ -39,21 +19,19 @@ program.option('-v, --version', 'Output the version number.').action(() => {
   }
 });
 
-program
+command
   .command('install')
   .alias('i')
-  .description('Install a package.')
-  .option('-n, --nuget', 'Install package from NuGet.')
-  .argument('<name>', 'Package name to install.')
+  .description('install a package.')
+  .option('-n, --nuget', 'install package from nuget.')
+  .argument('<name>', 'package name to install.')
   .action((name, options) => {
-    const resolver = new NuGetPackageResolver();
-    if (options.nuget) {
-      console.log(`Installing package from NuGet: ${name}`);
-      // 处理 NuGet 源的包
-      resolver.recursionResolve(name);
+    if (!options.nuget) {
+      console.log(`installing package: ${name}`);
+      resolvePackage(name);
     } else {
-      console.log(`Installing package: ${name}`);
-      // 处理 Unity 源的包
+      console.log(`installing package from NuGet: ${name}`);
+      resolveNugetPackage(name);
     }
   });
 
