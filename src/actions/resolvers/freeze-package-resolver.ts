@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
+import fse from 'fs-extra';
 import { Queue } from 'typescript-collections';
 import { Manifest, ScopedRegistry } from '../../interfaces/manifest.js';
 import { PackageInfo } from '../../interfaces/package-info.js';
@@ -14,7 +15,10 @@ export default class FreezePackageResolver {
 
   constructor() {}
 
-  private async loadManifest(): Promise<Manifest> {
+  private async loadManifest(): Promise<Manifest | undefined> {
+    if (!fs.existsSync(this.MAINFEST_PATH)) {
+      return undefined;
+    }
     const manifestContent = await fs.promises.readFile(
       this.MAINFEST_PATH,
       'utf8'
@@ -55,9 +59,20 @@ export default class FreezePackageResolver {
         packageVersion,
         registryUrl
       );
-      this.manifest.dependencies[packageName] = freezeVersion;
+      if (freezeVersion) {
+        this.manifest.dependencies[packageName] = freezeVersion;
+      }
       console.log();
     }
+    if (fs.existsSync(this.MAINFEST_PATH)) {
+      await fse.copy(this.MAINFEST_PATH, 'Packages/manifest.src.json');
+      await fse.remove(this.MAINFEST_PATH);
+    }
+    await fs.promises.writeFile(
+      this.MAINFEST_PATH,
+      JSON.stringify(this.manifest, null, 2),
+      'utf8'
+    );
   }
 
   private async singleResolve(
@@ -65,19 +80,29 @@ export default class FreezePackageResolver {
     packageVersion: string,
     registryUrl: string
   ) {
+    if (packageName.startsWith('com.unity.modules')) {
+      return null;
+    }
     const packageInfoUrl = `${registryUrl}/${packageName}`;
     const response = await axios.get(packageInfoUrl);
     const packageInfo: PackageInfo = response.data;
     const versionInfo = packageInfo.versions[packageVersion];
+    if (!versionInfo) {
+      return;
+    }
     // const packageUrl = `${registryUrl}/${packageName}/-/`;
     const downloadUrl = versionInfo.dist.tarball;
     const tarballName = `${packageName}-${packageVersion}.tgz`;
     await this.downloadPackage(downloadUrl, tarballName);
     const dependencies = versionInfo.dependencies;
-    for (const [packageName, packageVersion] of Object.entries(dependencies)) {
-      // Repeat the whole process for each dependency
-      console.log(`    - ${packageName}@${packageVersion}`);
-      this.packageQueue.enqueue([packageName, packageVersion]);
+    if (dependencies) {
+      for (const [packageName, packageVersion] of Object.entries(
+        dependencies
+      )) {
+        // Repeat the whole process for each dependency
+        console.log(`  - ${packageName}@${packageVersion}`);
+        this.packageQueue.enqueue([packageName, packageVersion]);
+      }
     }
     return `file:${tarballName}`;
   }
@@ -97,7 +122,7 @@ export default class FreezePackageResolver {
   }
 
   private async downloadPackage(downloadUrl: string, fileName: string) {
-    console.log(`Downloading ${fileName} from ${downloadUrl}`);
+    // console.log(`Downloading ${fileName} from ${downloadUrl}`);
     const response = await axios.get(downloadUrl, {
       responseType: 'arraybuffer'
     });
