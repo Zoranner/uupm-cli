@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 import * as cmd from 'commander';
 import showVersion from './actions/show-version.js';
 import showGraphic from './actions/show-graphic.js';
@@ -7,6 +6,7 @@ import {
   installPackage,
   installNugetPackage
 } from './actions/install-package.js';
+import { freezePackage } from './actions/freeze-package.js';
 
 const command = new cmd.Command('upm');
 
@@ -35,5 +35,12 @@ command
     }
   });
 
+command
+  .command('freeze')
+  .alias('f')
+  .action(() => {
+    console.log(`Freezing project packages`);
+    freezePackage();
+  });
 
 command.parse(process.argv);

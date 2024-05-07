@@ -1,4 +1,11 @@
+import {
+  NuGetPackageResolver,
+  UnityPackageResolver
+} from './resolvers/index.js';
+
 const installPackage = (name: string) => {
+  const resolver = new UnityPackageResolver();
+  resolver.recursionResolve(name);
 };
 
 const installNugetPackage = (name: string) => {
