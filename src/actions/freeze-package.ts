@@ -1,8 +1,10 @@
 import { FreezePackageResolver } from './resolvers/index.js';
 
-const freezePackage = () => {
+const freezePackage = async () => {
+  console.log(`Freezing project packages...`);
   const resolver = new FreezePackageResolver();
-  resolver.recursionResolve();
+  await resolver.recursionResolve();
+  console.log(`Freeze finished!`);
 };
 
 export { freezePackage };

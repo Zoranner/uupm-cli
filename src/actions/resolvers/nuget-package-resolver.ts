@@ -1,12 +1,11 @@
 import axios from 'axios';
-import ora from 'ora';
 import * as unzipper from 'unzipper';
 import * as fs from 'fs';
 import * as path from 'path';
 import fse from 'fs-extra';
-// import semver from 'semver';
 import xml2js from 'xml2js';
 import { Queue } from 'typescript-collections';
+import { loadStepSpinner } from './step-spinner.js';
 
 export default class NuGetPackageResolver {
   private recursion: boolean = false;
@@ -19,6 +18,7 @@ export default class NuGetPackageResolver {
   private unityPkgPath: string = '';
   private dependentQueue: Queue<any> = new Queue<any>();
 
+  private PACKAGES_PATH: string = 'Packages';
   private UNIT_SCOPE = 'org.nuget';
   private NUGET_BASE_URL =
     'http://pkg.rd.kim/repository/nuget-group/v3/content/';
@@ -28,12 +28,10 @@ export default class NuGetPackageResolver {
   async recursionResolve(name: string): Promise<void> {
     this.recursion = true;
     this.dependentQueue.enqueue(name);
-    console.log();
     while (this.dependentQueue.size() > 0) {
       const currentName = this.dependentQueue.dequeue();
       console.log(`> ${currentName}`);
       await this.singleResolve(currentName);
-      console.log();
     }
   }
 
@@ -41,10 +39,13 @@ export default class NuGetPackageResolver {
     const nugetPkgInfo = name.split('@');
     this.pascalName = nugetPkgInfo[0];
     this.kebabName = this.pascalName.toLowerCase();
-    this.nugetPkgPath = path.join(process.cwd(), `${this.pascalName}.nupkg`);
+    this.nugetPkgPath = path.join(
+      this.PACKAGES_PATH,
+      `${this.pascalName}.nupkg`
+    );
     this.unityPkgName = `${this.UNIT_SCOPE}.${this.kebabName}`;
 
-    await this.loadStepSpinner([
+    await loadStepSpinner([
       // Step 1: looking for package
       {
         startTitle: 'Looking for nuget package...',
@@ -55,8 +56,8 @@ export default class NuGetPackageResolver {
             this.targetVersion = await this.lookingForLatestVersion();
           }
           this.unityPkgPath = path.join(
-            process.cwd(),
-            `${this.unityPkgName}@${this.targetVersion}`
+            this.PACKAGES_PATH,
+            `${this.unityPkgName}-${this.targetVersion}`
           );
           return `The version ${this.targetVersion} of ${this.pascalName} found.`;
         },
@@ -98,36 +99,6 @@ export default class NuGetPackageResolver {
         }
       }
     ]);
-  }
-
-  private async loadStepSpinner(
-    steps: {
-      startTitle: string;
-      stepAction: () => Promise<string>;
-      errorAction: (() => Promise<void>) | null;
-      finallyAction: (() => Promise<void>) | null;
-    }[]
-  ): Promise<void> {
-    for (const step of steps) {
-      const spinner = ora({
-        text: step.startTitle,
-        color: 'yellow'
-      }).start();
-
-      try {
-        spinner.succeed(await step.stepAction());
-      } catch (error: any) {
-        if (step.errorAction) {
-          await step.errorAction();
-        }
-        spinner.fail(`[BREAK] ${error}`);
-        break;
-      } finally {
-        if (step.finallyAction) {
-          await step.finallyAction();
-        }
-      }
-    }
   }
 
   private async lookingForVersion(version: string): Promise<string> {

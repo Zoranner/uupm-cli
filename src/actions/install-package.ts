@@ -3,14 +3,18 @@ import {
   UnityPackageResolver
 } from './resolvers/index.js';
 
-const installPackage = (name: string) => {
+const installPackage = async (name: string) => {
+  console.log(`Installing package: ${name}...`);
   const resolver = new UnityPackageResolver();
-  resolver.recursionResolve(name);
+  await resolver.recursionResolve(name);
+  console.log(`Install finished!`);
 };
 
-const installNugetPackage = (name: string) => {
+const installNugetPackage = async (name: string) => {
+  console.log(`Installing package from NuGet: ${name}...`);
   const resolver = new NuGetPackageResolver();
-  resolver.recursionResolve(name);
+  await resolver.recursionResolve(name);
+  console.log(`Install finished!`);
 };
 
 export { installPackage, installNugetPackage };

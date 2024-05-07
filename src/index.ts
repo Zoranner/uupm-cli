@@ -28,10 +28,8 @@ command
   .argument('<name>', 'package name to install.')
   .action((name, options) => {
     if (!options.nuget) {
-      console.log(`Installing package: ${name}`);
       installPackage(name);
     } else {
-      console.log(`Installing package from NuGet: ${name}`);
       installNugetPackage(name);
     }
   });
@@ -40,7 +38,6 @@ command
   .command('freeze')
   .alias('f')
   .action(() => {
-    console.log(`Freezing project packages`);
     freezePackage();
   });
   
