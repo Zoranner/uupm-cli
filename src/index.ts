@@ -4,9 +4,9 @@ import * as cmd from 'commander';
 import showVersion from './actions/show-version.js';
 import showGraphic from './actions/show-graphic.js';
 import {
-  resolveNugetPackage,
-  resolvePackage
-} from './actions/resolve-package.js';
+  installPackage,
+  installNugetPackage
+} from './actions/install-package.js';
 
 const command = new cmd.Command('upm');
 
@@ -27,12 +27,13 @@ command
   .argument('<name>', 'package name to install.')
   .action((name, options) => {
     if (!options.nuget) {
-      console.log(`installing package: ${name}`);
-      resolvePackage(name);
+      console.log(`Installing package: ${name}`);
+      installPackage(name);
     } else {
-      console.log(`installing package from NuGet: ${name}`);
-      resolveNugetPackage(name);
+      console.log(`Installing package from NuGet: ${name}`);
+      installNugetPackage(name);
     }
   });
 
-program.parse(process.argv);
+
+command.parse(process.argv);
