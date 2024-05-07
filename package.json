@@ -1,7 +1,7 @@
 {
-  "name": "@upm/cli",
+  "name": "upm-cli",
   "version": "0.0.2",
-  "description": "",
+  "description": "The package manager for Unity.",
   "author": "Zoranner",
   "license": "MIT",
   "exports": "./index.js",
@@ -18,7 +18,10 @@
     "format": "prettier --write --parser=typescript src/**/*.ts"
   },
   "keywords": [
-    "cli"
+    "cli",
+    "unity",
+    "package",
+    "manager"
   ],
   "files": [
     "dist",
