@@ -3,8 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import fse from 'fs-extra';
 import { Queue } from 'typescript-collections';
-import { Manifest, ScopedRegistry } from '../../interfaces/manifest.js';
-import { PackageInfo } from '../../interfaces/package-info.js';
+import { Manifest, ScopedRegistry } from '../../interfaces/package-manifest.js';
+import { PackageInfo } from '../../interfaces/unity-package-info.js';
 
 export default class FreezePackageResolver {
   private MAINFEST_PATH: string = 'Packages/manifest.json';
