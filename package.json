@@ -1,6 +1,6 @@
 {
-  "name": "upm-cli",
-  "version": "0.0.2",
+  "name": "@younju/upm-cli",
+  "version": "0.0.3",
   "description": "The package manager for Unity.",
   "author": "Zoranner",
   "license": "MIT",
