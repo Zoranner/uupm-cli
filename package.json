@@ -45,16 +45,12 @@
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
-    "@rollup/plugin-json": "^6.1.0",
-    "@rollup/plugin-terser": "^0.4.4",
     "@types/inquirer": "^9.0.7",
     "@types/update-notifier": "^5.0.0",
     "esbuild": "^0.20.2",
     "lint-staged": "^15.2.2",
     "nodemon": "^3.1.0",
     "prettier": "^3.2.5",
-    "rollup": "^4.14.1",
-    "rollup-plugin-typescript2": "^0.36.0",
     "typescript": "^5.4.4"
   }
 }

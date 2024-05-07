@@ -1,7 +1,5 @@
-import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import toml from '@iarna/toml';
 
 const upmrcPath = path.join(os.homedir(), '.upmrc');
 
