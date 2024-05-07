@@ -7,6 +7,7 @@ import {
   installNugetPackage
 } from './actions/install-package.js';
 import { freezePackage } from './actions/freeze-package.js';
+import { addRegistry, listRegistries, removeRegistry } from './actions/manage-registry.js';
 
 const command = new cmd.Command('upm');
 
@@ -41,6 +42,35 @@ command
   .action(() => {
     console.log(`Freezing project packages`);
     freezePackage();
+  });
+  
+const scopeCommand = command.command('scope').description('Manage scopes.');
+
+  scopeCommand
+  .command('add')
+  .alias('a')
+  .description('add a new scope.')
+  .argument('<name>', 'scope name to add.')
+  .argument('<url>', 'scope url to add.')
+  .action((name, url) => {
+    addRegistry(name, url);
+  });
+
+scopeCommand
+  .command('remove')
+  .alias('r')
+  .description('remove an existing scope.')
+  .argument('<name>', 'scope name to remove.')
+  .action((name) => {
+    removeRegistry(name);
+  });
+
+scopeCommand
+  .command('list')
+  .alias('l')
+  .description('list all scopes.')
+  .action(() => {
+    listRegistries();
   });
 
 command.parse(process.argv);
