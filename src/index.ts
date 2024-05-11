@@ -9,7 +9,7 @@ import {
 import { freezePackage } from './actions/freeze-package.js';
 import { addRegistry, listRegistries, removeRegistry } from './actions/manage-registry.js';
 
-const command = new cmd.Command('upm');
+const command = new cmd.Command('uupm');
 
 command.option('-v, --version', 'output the version number.').action(() => {
   const options = command.opts();
