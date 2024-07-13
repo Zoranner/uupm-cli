@@ -6,8 +6,10 @@ import fse from 'fs-extra';
 import xml2js from 'xml2js';
 import { Queue } from 'typescript-collections';
 import { loadStepSpinner } from './step-spinner.js';
+import { readConfigs } from '../configs/config-base.js';
 
 export default class NuGetPackageResolver {
+  private nugetBaseUrl = '';
   private recursion: boolean = false;
   private pascalName: string = '';
   private kebabName: string = '';
@@ -20,10 +22,28 @@ export default class NuGetPackageResolver {
 
   private PACKAGES_PATH: string = 'Packages';
   private UNIT_SCOPE = 'org.nuget';
-  private NUGET_BASE_URL =
-    'http://pkg.rd.kim/repository/nuget-group/v3/content/';
+  private OFFICIAL_NUGET_BASE_URL = 'https://api.nuget.org/v3-flatcontainer/';
 
   constructor() {}
+
+  async getNugetBaseUrl() {
+    const globalConfig = readConfigs();
+    try {
+      const nugetConfig = globalConfig.registry.nuget;
+      const nugetSourceUrl = nugetConfig.source[nugetConfig.default];
+      const response = await axios.get(nugetSourceUrl);
+      const resources = response.data.resources;
+      for (let i = 0; i < resources.length; i++) {
+        if (resources[i]['@type'] === 'PackageBaseAddress/3.0.0') {
+          this.nugetBaseUrl = resources[i]['@id'];
+          break;
+        }
+      }
+    } catch (e) {
+      this.nugetBaseUrl = this.OFFICIAL_NUGET_BASE_URL;
+      console.log(e);
+    }
+  }
 
   async recursionResolve(name: string): Promise<void> {
     this.recursion = true;
@@ -103,7 +123,7 @@ export default class NuGetPackageResolver {
 
   private async lookingForVersion(version: string): Promise<string> {
     const response = await axios.get(
-      `${this.NUGET_BASE_URL}/${this.kebabName}/index.json`
+      `${this.nugetBaseUrl}/${this.kebabName}/index.json`
     );
     const versions = response.data.versions;
 
@@ -125,7 +145,7 @@ export default class NuGetPackageResolver {
 
   private async lookingForLatestVersion(): Promise<string> {
     const response = await axios.get(
-      `${this.NUGET_BASE_URL}/${this.kebabName}/index.json`
+      `${this.nugetBaseUrl}/${this.kebabName}/index.json`
     );
     const versions = response.data.versions;
     const neededVersions = versions
@@ -143,7 +163,7 @@ export default class NuGetPackageResolver {
 
   private async downloadNuPackage(): Promise<void> {
     // 构建下载URL
-    const nugetPkgUrl = `${this.NUGET_BASE_URL}/${this.kebabName}/${this.targetVersion}/${this.kebabName}.${this.targetVersion}.nupkg`;
+    const nugetPkgUrl = `${this.nugetBaseUrl}/${this.kebabName}/${this.targetVersion}/${this.kebabName}.${this.targetVersion}.nupkg`;
     const { data } = await axios({
       method: 'GET',
       url: nugetPkgUrl,

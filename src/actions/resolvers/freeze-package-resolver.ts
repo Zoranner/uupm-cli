@@ -111,7 +111,7 @@ export default class FreezePackageResolver extends MainfestHandleBase {
         }
       }
     }
-    return this.OFFICIAL_REGISTRY_URL;
+    return this.defaultRegistryUrl;
   }
 
   private async downloadPackage(downloadUrl: string, fileName: string) {
