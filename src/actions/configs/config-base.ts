@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as yaml from 'yaml';
 import * as os from 'os';
-import { exec, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import {
   GlobalConfig,
   EditorVersions
@@ -33,12 +33,12 @@ const initConfigs = () => {
       }
     },
     editor: {
-      default: 'defaultNuget',
-      version: {
-        Nuget: 'https://api.nuget.org/v3/'
-      }
+      default: '',
+      version: {}
     }
   };
+  initialConfigs.editor.version = scanEditorVersions();
+  initialConfigs.editor.default = Object.keys(initialConfigs.editor.version)[0];
   return initialConfigs;
 };
 
@@ -46,57 +46,30 @@ const initConfigs = () => {
 const scanEditorVersions = (): EditorVersions => {
   let versions: EditorVersions = {};
   editorBaseDirs.forEach((editorBaseDir) => {
-    // console.log(editorBaseDir);
+    if (!fs.existsSync(editorBaseDir)) {
+      return;
+    }
     fs.readdirSync(editorBaseDir)
       .map((childDir) => `${editorBaseDir}${childDir}`)
       .forEach((childDir) => {
-        const unityExePath = `${childDir}/Editor/Unity.exe`;
-        // console.log(unityExePath);
+        const editorPath = `${childDir}/Editor`;
+        const unityExePath = `${editorPath}/Unity.exe`;
         if (fs.existsSync(unityExePath)) {
-          // console.log(unityExePath);
-          // 通过 -version 命令，获取版本信息
-          const version = spawnSync(unityExePath, ['-version'], {
-            encoding: 'utf8',
-            stdio: ['overlapped', 'pipe', 'overlapped']
-          });
-          console.log(JSON.stringify(version));
-          // exec(`"${unityExePath}" -version`, (error, stdout, stderr) => {
-          //   if (error) {
-          //     console.error(`Error: ${error}`);
-          //     return;
-          //   }
-          //   if (stderr) {
-          //     console.error(`Stderr: ${stderr}`);
-          //     return;
-          //   }
-          //   console.log(`Version and Author: ${stdout}`);
-          // });
-          versions[version.stdout] = unityExePath;
+          const version = spawnSync(
+            'powershell',
+            [
+              '-command',
+              `(Get-Item '${unityExePath}').VersionInfo.ProductVersion`
+            ],
+            {
+              encoding: 'utf8',
+              stdio: ['pipe', 'pipe', 'pipe']
+            }
+          ).stdout.split('_')[0];
+          versions[version] = editorPath;
         }
       });
   });
-  // const layer2Dirs = fs.readdirSync(editorBaseDir);
-  // layer2Dirs
-  //   .map((layer2Dir) => `${editorBaseDir}${layer2Dir}/`)
-  //   .forEach((layer2Dir) => {
-  //     console.log(layer2Dir);
-  //     try {
-  //       fs.readdirSync(layer2Dir, { recursive: true })
-  //         .map((layer3Dir) => `${layer2Dir}${layer3Dir}`)
-  //         .forEach((layer3Dir) => {
-  //           console.log(layer3Dir);
-  //           const unityExePath = `${layer3Dir}/Editor/Unity.exe`;
-  //           if (fs.existsSync(unityExePath)) {
-  //             // 通过 -version 命令，获取版本信息
-  //             const version = spawnSync(unityExePath, ['-version'], {
-  //               encoding: 'utf8'
-  //             }).stdout;
-  //             console.log(`========= ${version} ${unityExePath}`);
-  //             versions[version] = unityExePath;
-  //           }
-  //         });
-  //     } catch (error) {}
-  //   });
   return versions;
 };
 

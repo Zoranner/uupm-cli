@@ -1,4 +1,4 @@
-import { readConfigs, scanEditorVersions, writeConfigs } from './config-base.js';
+import { readConfigs, writeConfigs } from './config-base.js';
 
 const addEditor = (name: string, path: string) => {
   const configs = readConfigs();
@@ -13,13 +13,10 @@ const removeEditor = (name: string) => {
 };
 
 const listEditors = () => {
-  const versions = scanEditorVersions();
-  console.log(versions);
+  // const versions = scanEditorVersions();
+  // console.log(versions);
   const configs = readConfigs();
-  const editors = Object.keys(configs.editor.version);
-  editors.forEach((editor) => {
-    console.log(`${editor}: ${configs.editor.version[editor]}`);
-  });
+  console.log(configs.editor.version);
 };
 
 const setDefaultEditor = (name: string) => {
