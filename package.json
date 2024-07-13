@@ -1,6 +1,6 @@
 {
   "name": "@uupm/cli",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "uupm - a Unity Package Manager",
   "author": "Zoranner",
   "license": "MIT",
