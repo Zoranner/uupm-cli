@@ -2,14 +2,13 @@ import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
 import fse from 'fs-extra';
-import { Queue } from 'typescript-collections';
 import { ScopedRegistry } from '../../interfaces/package-manifest.js';
 import { PackageInfo } from '../../interfaces/unity-package-info.js';
 import { loadStepSpinner } from './step-spinner.js';
 import MainfestHandleBase from './mainfest-handle-base.js';
 
 export default class FreezePackageResolver extends MainfestHandleBase {
-  private packageQueue: Queue<[string, string]> = new Queue<[string, string]>();
+  private packageMap: Map<string, string> = new Map<string, string>();
 
   constructor() {
     super();
@@ -27,15 +26,12 @@ export default class FreezePackageResolver extends MainfestHandleBase {
     for (const [packageName, packageVersion] of Object.entries(
       this.manifest.dependencies
     )) {
-      this.packageQueue.enqueue([packageName, packageVersion]);
+      this.addToPackageMap(packageName, packageVersion);
     }
     const scopedRegistries = this.manifest?.scopedRegistries;
-    while (this.packageQueue.size() > 0) {
-      const currentPackage = this.packageQueue.dequeue();
-      if (!currentPackage || currentPackage.length != 2) {
-        continue;
-      }
-      const [packageName, packageVersion] = currentPackage;
+    while (this.packageMap.size > 0) {
+      const [packageName, packageVersion] = this.packageMap.entries().next().value;
+      this.packageMap.delete(packageName);
       const registryUrl = this.matchRegistryUrl(packageName, scopedRegistries);
       await this.singleResolve(packageName, packageVersion, registryUrl);
     }
@@ -84,11 +80,10 @@ export default class FreezePackageResolver extends MainfestHandleBase {
           await this.downloadPackage(downloadUrl, tarballName);
           const dependencies = versionInfo.dependencies;
           if (dependencies) {
-            for (const [packageName, packageVersion] of Object.entries(
+            for (const [depPackageName, depPackageVersion] of Object.entries(
               dependencies
             )) {
-              // console.log(`  - ${packageName}@${packageVersion}`);
-              this.packageQueue.enqueue([packageName, packageVersion]);
+              this.addToPackageMap(depPackageName, depPackageVersion);
             }
           }
           this.manifest.dependencies[packageName] = `file:${tarballName}`;
@@ -120,5 +115,28 @@ export default class FreezePackageResolver extends MainfestHandleBase {
     });
     const filePath = path.join('Packages', fileName);
     await fs.promises.writeFile(filePath, response.data);
+  }
+
+  private addToPackageMap(packageName: string, packageVersion: string) {
+    if (this.packageMap.has(packageName)) {
+      const existingVersion = this.packageMap.get(packageName)!;
+      if (this.compareVersions(packageVersion, existingVersion) > 0) {
+        this.packageMap.set(packageName, packageVersion);
+      }
+    } else {
+      this.packageMap.set(packageName, packageVersion);
+    }
+  }
+
+  private compareVersions(version1: string, version2: string): number {
+    const v1 = version1.split('.').map(Number);
+    const v2 = version2.split('.').map(Number);
+    for (let i = 0; i < Math.max(v1.length, v2.length); i++) {
+      const num1 = v1[i] || 0;
+      const num2 = v2[i] || 0;
+      if (num1 > num2) return 1;
+      if (num1 < num2) return -1;
+    }
+    return 0;
   }
 }
