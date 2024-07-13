@@ -3,7 +3,7 @@ import figlet from 'figlet';
 const showGraphic = () => {
   console.log();
   console.log(
-    figlet.textSync('_UPM_', {
+    figlet.textSync('_UUPM_', {
       font: 'Ghost',
       horizontalLayout: 'default',
       verticalLayout: 'default',

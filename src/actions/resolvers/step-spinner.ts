@@ -16,11 +16,11 @@ const loadStepSpinner = async (
 
     try {
       spinner.succeed(await step.stepAction());
-    } catch (error: any) {
+    } catch (e) {
       if (step.errorAction) {
         await step.errorAction();
       }
-      spinner.fail(`[BREAK] ${error}`);
+      spinner.fail(`[BREAK] ${e}`);
       break;
     } finally {
       if (step.finallyAction) {
