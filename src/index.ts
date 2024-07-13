@@ -7,7 +7,13 @@ import {
   installNugetPackage
 } from './actions/install-package.js';
 import { freezePackage } from './actions/freeze-package.js';
-import { addRegistry, listRegistries, removeRegistry } from './actions/manage-registry.js';
+import {
+  RegistryType,
+  addRegistry,
+  listRegistries,
+  removeRegistry
+} from './actions/configs/config-registry.js';
+import { addEditor, listEditors, removeEditor } from './actions/configs/config-editor.js';
 
 const command = new cmd.Command('uupm');
 
@@ -40,34 +46,86 @@ command
   .action(() => {
     freezePackage();
   });
-  
-const scopeCommand = command.command('scope').description('Manage scopes.');
 
-  scopeCommand
+const registryCommand = command
+  .command('registry')
+  .description('Manage registries.');
+registryCommand
   .command('add')
   .alias('a')
-  .description('add a new scope.')
-  .argument('<name>', 'scope name to add.')
-  .argument('<url>', 'scope url to add.')
+  .option('-n, --nuget', 'registry for nuget.')
+  .description('add a new registry.')
+  .argument('<name>', 'registry name to add.')
+  .argument('<url>', 'registry url to add.')
+  .action((name, url, options) => {
+    if (!options.nuget) {
+      addRegistry(name, url);
+    } else {
+      addRegistry(name, url, RegistryType.Nuget);
+    }
+  });
+
+registryCommand
+  .command('remove')
+  .alias('r')
+  .option('-n, --nuget', 'registry for nuget.')
+  .description('remove an existing registry.')
+  .argument('<name>', 'registry name to remove.')
+  .action((name, options) => {
+    if (!options.nuget) {
+      removeRegistry(name);
+    } else {
+      removeRegistry(name, RegistryType.Nuget);
+    }
+  });
+
+registryCommand
+  .command('list')
+  .alias('l')
+  .option('-n, --nuget', 'registry for nuget.')
+  .description('list all registries.')
+  .action((options) => {
+    if (!options.nuget) {
+      listRegistries();
+    } else {
+      listRegistries(RegistryType.Nuget);
+    }
+  });
+
+const editorCommand = command.command('editor').description('Manage editors.');
+editorCommand
+  .command('scan')
+  .alias('s')
+  .description('scan current editor.')
   .action((name, url) => {
     addRegistry(name, url);
   });
 
-scopeCommand
-  .command('remove')
-  .alias('r')
-  .description('remove an existing scope.')
-  .argument('<name>', 'scope name to remove.')
-  .action((name) => {
-    removeRegistry(name);
+editorCommand
+  .command('add')
+  .alias('a')
+  .description('add a new editor.')
+  .argument('<name>', 'editor name to add.')
+  .argument('<path>', 'editor path to add.')
+  .action((name, path) => {
+    addEditor(name, path);
   });
 
-scopeCommand
+editorCommand
+  .command('remove')
+  .alias('r')
+  .description('remove an existing editor.')
+  .argument('<name>', 'editor name to remove.')
+  .action((name) => {
+    removeEditor(name);
+  });
+
+editorCommand
   .command('list')
   .alias('l')
-  .description('list all scopes.')
+  .description('list all editors.')
   .action(() => {
-    listRegistries();
+    listEditors();
   });
 
 command.parse(process.argv);
