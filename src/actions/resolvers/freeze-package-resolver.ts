@@ -2,12 +2,32 @@ import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
 import fse from 'fs-extra';
+import * as tar from 'tar';
+import inquirer from 'inquirer';
 import { ScopedRegistry } from '../../interfaces/package-manifest.js';
-import { PackageInfo } from '../../interfaces/unity-package-info.js';
+import {
+  PackageInfo,
+  VersionDetail
+} from '../../interfaces/unity-package-info.js';
 import { loadStepSpinner } from './step-spinner.js';
 import MainfestHandleBase from './mainfest-handle-base.js';
+import { readConfigs } from '../configs/config-base.js';
+import { Dependencies } from '../../interfaces/basic-struct.js';
 
 export default class FreezePackageResolver extends MainfestHandleBase {
+  private BUILD_IN_PACKAGES = [
+    'com.unity.2d.sprite',
+    'com.unity.2d.tilemap',
+    'com.unity.render-pipelines.core',
+    'com.unity.render-pipelines.high-definition',
+    'com.unity.shadergraph',
+    'com.unity.rendering.denoising',
+    'com.unity.ugui',
+    'com.unity.render-pipelines.universal',
+    'com.unity.visualeffectgraph'
+  ];
+
+  private editorPath = '';
   private packageMap: Map<string, string> = new Map<string, string>();
 
   constructor() {
@@ -15,6 +35,7 @@ export default class FreezePackageResolver extends MainfestHandleBase {
   }
 
   async recursionResolve(): Promise<void> {
+    this.editorPath = await this.selectUnityVersion();
     const manifest = await this.loadManifest();
     if (!manifest) {
       console.log(
@@ -30,7 +51,9 @@ export default class FreezePackageResolver extends MainfestHandleBase {
     }
     const scopedRegistries = this.manifest?.scopedRegistries;
     while (this.packageMap.size > 0) {
-      const [packageName, packageVersion] = this.packageMap.entries().next().value;
+      const [packageName, packageVersion] = this.packageMap
+        .entries()
+        .next().value;
       this.packageMap.delete(packageName);
       const registryUrl = this.matchRegistryUrl(packageName, scopedRegistries);
       await this.singleResolve(packageName, packageVersion, registryUrl);
@@ -57,42 +80,145 @@ export default class FreezePackageResolver extends MainfestHandleBase {
         stepAction: async () => {
           if (
             packageName.startsWith('com.unity.modules') ||
-            packageName.startsWith('com.unity.feature') ||
-            packageName.startsWith('com.unity.2d.sprite')
+            packageName.startsWith('com.unity.feature')
           ) {
             return `Skipped: ${packageName}@${packageVersion}.`;
           }
+
           if (
             packageVersion.startsWith('file:') ||
             packageVersion.startsWith('git:')
           ) {
             return `Skipped: ${packageName}@${packageVersion}.`;
           }
-          const packageInfoUrl = `${registryUrl}/${packageName}`;
-          const response = await axios.get(packageInfoUrl);
-          const packageInfo: PackageInfo = response.data;
-          const versionInfo = packageInfo.versions[packageVersion];
-          if (!versionInfo) {
-            return `Skipped: ${packageName}@${packageVersion}.`;
-          }
-          const downloadUrl = versionInfo.dist.tarball;
-          const tarballName = `${packageName}-${packageVersion}.tgz`;
-          await this.downloadPackage(downloadUrl, tarballName);
-          const dependencies = versionInfo.dependencies;
-          if (dependencies) {
-            for (const [depPackageName, depPackageVersion] of Object.entries(
-              dependencies
-            )) {
-              this.addToPackageMap(depPackageName, depPackageVersion);
+
+          let tarballName: string;
+          let versionInfo: VersionDetail;
+
+          if (this.BUILD_IN_PACKAGES.includes(packageName)) {
+            const packagePath = path.join(
+              this.editorPath,
+              'Data',
+              'Resources',
+              'PackageManager',
+              'BuiltInPackages',
+              packageName
+            );
+            const packageFile = path.join(packagePath, 'package.json');
+            if (!fs.existsSync(packageFile)) {
+              return `Skipped: ${packageName}@${packageVersion}.`;
             }
+            const packageContent = await fs.promises.readFile(
+              packageFile,
+              'utf8'
+            );
+            versionInfo = JSON.parse(packageContent);
+            if (!versionInfo) {
+              return `Skipped: ${packageName}@${packageVersion}.`;
+            }
+            // 复制包到 Packages 目录
+            await fse.copy(packagePath, path.join('Packages', `${packageName}-${packageVersion}`));
+            // 从 manifest.json 中删除包的 key
+            delete this.manifest.dependencies[packageName];
+          } else {
+            const packageInfoUrl = `${registryUrl}/${packageName}`;
+            const response = await axios.get(packageInfoUrl);
+            const packageInfo: PackageInfo = response.data;
+            versionInfo = packageInfo.versions[packageVersion];
+            if (!versionInfo) {
+              return `Skipped: ${packageName}@${packageVersion}.`;
+            }
+            tarballName = `${packageName}-${packageVersion}.tgz`;
+            const downloadUrl = versionInfo.dist.tarball;
+            await this.downloadPackage(downloadUrl, tarballName);
+            this.manifest.dependencies[packageName] = `file:${tarballName}`;
           }
-          this.manifest.dependencies[packageName] = `file:${tarballName}`;
+
+          this.resolveDependencies(versionInfo.dependencies);
           return `Frozen: ${packageName}@${packageVersion}.`;
         },
         errorAction: null,
         finallyAction: null
       }
     ]);
+  }
+
+  private async selectUnityVersion(): Promise<string> {
+    const configs = readConfigs();
+    const versions = Object.keys(configs.editor.version);
+    const answers = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'version',
+        message: 'Please select the Unity version:',
+        choices: versions
+      }
+    ]);
+    return configs.editor.version[answers.version];
+  }
+
+  private async getBuiltInPackage(
+    packageName: string,
+    packageVersion: string
+  ): Promise<string | null> {
+    const packagePath = path.join(
+      this.editorPath,
+      'Data',
+      'Resources',
+      'PackageManager',
+      'BuiltInPackages',
+      packageName
+    );
+    const packageFile = path.join(packagePath, 'package.json');
+    const tarballName = `${packageName}-${packageVersion}.tgz`;
+    const tarballPath = path.join('Packages', tarballName);
+
+    // 获取 build-in 包的依赖项
+    if (!fs.existsSync(packageFile)) {
+      return null;
+    }
+    const packageContent = await fs.promises.readFile(packageFile, 'utf8');
+    const packageInfo: PackageInfo = JSON.parse(packageContent);
+    const versionInfo = packageInfo.versions[packageVersion];
+    if (!versionInfo) {
+      return null;
+    }
+    const dependencies = versionInfo.dependencies;
+    if (dependencies) {
+      for (const [depPackageName, depPackageVersion] of Object.entries(
+        dependencies
+      )) {
+        this.addToPackageMap(depPackageName, depPackageVersion);
+      }
+    }
+
+    // 压缩为 .tgz 文件
+    await tar.c(
+      {
+        gzip: true,
+        file: tarballPath,
+        cwd: packagePath
+      },
+      ['.']
+    );
+
+    return tarballName;
+  }
+
+  private async compressPackage(
+    packagePath: string,
+    tarballName: string
+  ): Promise<void> {
+    const tarballPath = path.join('Packages', tarballName);
+    // 压缩为 .tgz 文件
+    await tar.c(
+      {
+        gzip: true,
+        file: tarballPath,
+        cwd: packagePath
+      },
+      ['.']
+    );
   }
 
   private matchRegistryUrl(
@@ -115,6 +241,16 @@ export default class FreezePackageResolver extends MainfestHandleBase {
     });
     const filePath = path.join('Packages', fileName);
     await fs.promises.writeFile(filePath, response.data);
+  }
+
+  private resolveDependencies(dependencies: Dependencies) {
+    if (dependencies) {
+      for (const [depPackageName, depPackageVersion] of Object.entries(
+        dependencies
+      )) {
+        this.addToPackageMap(depPackageName, depPackageVersion);
+      }
+    }
   }
 
   private addToPackageMap(packageName: string, packageVersion: string) {
