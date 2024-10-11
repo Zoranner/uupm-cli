@@ -41,13 +41,13 @@ export default class NuGetPackageResolver {
       }
     } catch (e) {
       this.nugetBaseUrl = this.OFFICIAL_NUGET_BASE_URL;
-      console.log(e);
     }
   }
 
   async recursionResolve(name: string): Promise<void> {
     this.recursion = true;
     this.dependentQueue.enqueue(name);
+    await this.getNugetBaseUrl();
     while (this.dependentQueue.size() > 0) {
       const currentName = this.dependentQueue.dequeue();
       console.log(`> ${currentName}`);
@@ -151,7 +151,7 @@ export default class NuGetPackageResolver {
     const neededVersions = versions
       .filter((version: string) => !version.includes('-preview')) // 过滤掉 'preview'
       .filter((version: string) => !version.includes('-beta')) // 过滤掉 'beta'
-      .filter((version: string) => !version.includes('-rc')); // 过滤掉 'beta'
+      .filter((version: string) => !version.includes('-rc')); // 过滤掉 'rc'
     // console.log();
     // console.log(neededVersions);
 

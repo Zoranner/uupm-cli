@@ -28,7 +28,7 @@ const initConfigs = () => {
       nuget: {
         default: 'Nuget',
         source: {
-          Nuget: 'https://api.nuget.org/v3/'
+          Nuget: 'https://api.nuget.org/v3/index.json'
         }
       }
     },
