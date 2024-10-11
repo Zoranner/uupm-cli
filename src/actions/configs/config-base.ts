@@ -80,6 +80,7 @@ const readConfigs = (): GlobalConfig => {
     if (!fs.existsSync(configFile)) {
       // 文件不存在时，先初始化配置数据
       data = initConfigs();
+      writeConfigs(data);
     } else {
       // 文件存在，读取配置文件内容
       const fileContents = fs.readFileSync(configFile, 'utf8');
