@@ -130,14 +130,8 @@ export default class NuGetPackageResolver {
     const response = await axios.get(
       `${this.nugetBaseUrl}/${this.kebabName}/index.json`
     );
+    version = version.replace('[', '').replace(']', '');
     const versions = response.data.versions;
-
-    // const neededVersions = versions.map(
-    //   (version: string) =>
-    //     version.includes('rc') ? version.replace('-rc', '') : version // 替换 'rc'
-    // );
-    // console.log();
-    // console.log(neededVersions);
     // 检查是否存在该版本
     if (versions.includes(version)) {
       return version;
@@ -157,11 +151,6 @@ export default class NuGetPackageResolver {
       .filter((version: string) => !version.includes('-preview')) // 过滤掉 'preview'
       .filter((version: string) => !version.includes('-beta')) // 过滤掉 'beta'
       .filter((version: string) => !version.includes('-rc')); // 过滤掉 'rc'
-    // console.log();
-    // console.log(neededVersions);
-
-    // // 使用语义化版本库对版本进行排序
-    // neededVersions.sort((a: number, b: number) => semver.rcompare(a, b));
     // 返回最新的稳定版本
     return neededVersions[neededVersions.length - 1];
   }
