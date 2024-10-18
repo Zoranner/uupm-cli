@@ -43,7 +43,7 @@ command
       installPackage(name);
     } else {
       if (!options.source) {
-      installNugetPackage(name);
+        installNugetPackage(name);
       } else {
         installNugetPackage(name, source);
       }

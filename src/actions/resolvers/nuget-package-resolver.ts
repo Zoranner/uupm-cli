@@ -54,6 +54,7 @@ export default class NuGetPackageResolver {
     await this.getNugetBaseUrl(source);
     while (this.dependentQueue.size() > 0) {
       const currentName = this.dependentQueue.dequeue();
+      console.log();
       console.log(`> ${currentName}`);
       await this.singleResolve(currentName);
     }

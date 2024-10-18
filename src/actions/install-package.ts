@@ -17,6 +17,7 @@ const installNugetPackage = async (
   console.log(`Installing package from NuGet: ${name}...`);
   const resolver = new NuGetPackageResolver();
   await resolver.recursionResolve(name, source);
+  console.log();
   console.log(`Install finished!`);
 };
 
