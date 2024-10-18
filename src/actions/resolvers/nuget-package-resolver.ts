@@ -276,15 +276,19 @@ export default class NuGetPackageResolver {
         .pipe(unzipper.Parse())
         .on('entry', (entry: any) => {
           const fileName = entry.path;
+          const isDirectory = entry.type === 'Directory';
           const isRootFile =
             fileName.indexOf('/') === -1 && fileName !== '[Content_Types].xml';
           const isLibraryFile = fileName.startsWith(libraryPath);
           const isRuntimesFile = fileName.startsWith(runtimesPath);
 
-          if (isRootFile || isLibraryFile || isRuntimesFile) {
+          if ((isRootFile || isLibraryFile || isRuntimesFile) && !isDirectory) {
             const fullPath = path.join(this.unityPkgPath, fileName);
             // 确保目录存在
-            fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+            const fullPathDir = path.dirname(fullPath);
+            if (!fs.existsSync(fullPathDir)) {
+              fs.mkdirSync(fullPathDir, { recursive: true });
+            }
             // 解压文件
             entry.pipe(fs.createWriteStream(fullPath));
           } else {
