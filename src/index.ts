@@ -59,12 +59,14 @@ command
 
 const registryCommand = command
   .command('registry')
-  .description('Manage registries.');
+  .alias('r')
+  .description('manage registries.');
+
 registryCommand
   .command('add')
   .alias('a')
-  .option('-n, --nuget', 'registry for nuget.')
   .description('add a new registry.')
+  .option('-n, --nuget', 'registry for nuget.')
   .argument('<name>', 'registry name to add.')
   .argument('<url>', 'registry url to add.')
   .action((name, url, options) => {
@@ -78,8 +80,8 @@ registryCommand
 registryCommand
   .command('remove')
   .alias('r')
-  .option('-n, --nuget', 'registry for nuget.')
   .description('remove an existing registry.')
+  .option('-n, --nuget', 'registry for nuget.')
   .argument('<name>', 'registry name to remove.')
   .action((name, options) => {
     if (!options.nuget) {
@@ -92,8 +94,8 @@ registryCommand
 registryCommand
   .command('list')
   .alias('l')
-  .option('-n, --nuget', 'registry for nuget.')
   .description('list all registries.')
+  .option('-n, --nuget', 'registry for nuget.')
   .action((options) => {
     if (!options.nuget) {
       listRegistries();
@@ -102,7 +104,11 @@ registryCommand
     }
   });
 
-const editorCommand = command.command('editor').description('Manage editors.');
+const editorCommand = command
+  .command('editor')
+  .alias('e')
+  .description('manage unity editors.');
+
 editorCommand
   .command('scan')
   .alias('s')
