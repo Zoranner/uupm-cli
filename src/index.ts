@@ -13,7 +13,11 @@ import {
   listRegistries,
   removeRegistry
 } from './actions/configs/config-registry.js';
-import { addEditor, listEditors, removeEditor } from './actions/configs/config-editor.js';
+import {
+  addEditor,
+  listEditors,
+  removeEditor
+} from './actions/configs/config-editor.js';
 
 const command = new cmd.Command('uupm');
 
@@ -32,11 +36,17 @@ command
   .description('install a package.')
   .option('-n, --nuget', 'install package from nuget.')
   .argument('<name>', 'package name to install.')
-  .action((name, options) => {
+  .option('-s, --source', 'install package from source.')
+  .argument('[source]', 'nuget package source name.')
+  .action((name, source, options) => {
     if (!options.nuget) {
       installPackage(name);
     } else {
+      if (!options.source) {
       installNugetPackage(name);
+      } else {
+        installNugetPackage(name, source);
+      }
     }
   });
 

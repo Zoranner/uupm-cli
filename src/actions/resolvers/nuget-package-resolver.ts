@@ -26,11 +26,12 @@ export default class NuGetPackageResolver {
 
   constructor() {}
 
-  async getNugetBaseUrl() {
+  async getNugetBaseUrl(name: string | undefined = undefined) {
     const globalConfig = readConfigs();
     try {
       const nugetConfig = globalConfig.registry.nuget;
-      const nugetSourceUrl = nugetConfig.source[nugetConfig.default];
+      const sourceName = name ? name : nugetConfig.default;
+      const nugetSourceUrl = nugetConfig.source[sourceName];
       const response = await axios.get(nugetSourceUrl);
       const resources = response.data.resources;
       for (let i = 0; i < resources.length; i++) {
@@ -44,10 +45,13 @@ export default class NuGetPackageResolver {
     }
   }
 
-  async recursionResolve(name: string): Promise<void> {
+  async recursionResolve(
+    name: string,
+    source: string | undefined = undefined
+  ): Promise<void> {
     this.recursion = true;
     this.dependentQueue.enqueue(name);
-    await this.getNugetBaseUrl();
+    await this.getNugetBaseUrl(source);
     while (this.dependentQueue.size() > 0) {
       const currentName = this.dependentQueue.dequeue();
       console.log(`> ${currentName}`);
