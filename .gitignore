@@ -1,0 +1,16 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Local / secrets
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE (personal local settings; remove these lines if you commit shared configs)
+.idea/
+*.swp
+*.swo

@@ -1,0 +1,27 @@
+[package]
+name = "uupm"
+version = "0.1.0"
+edition = "2021"
+description = "Unity Package Manager CLI — Rust port of @uupm/cli"
+license = "MIT"
+authors = ["Zoranner"]
+
+[[bin]]
+name = "uupm"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+dialoguer = "0.11"
+dirs = "6"
+include_dir = "0.7"
+indicatif = "0.17"
+md-5 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+roxmltree = "0.20"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread", "process"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
