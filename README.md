@@ -1,119 +1,167 @@
 # UUPM
 
-用于管理 Unity 工程包依赖的命令行工具：维护 Unity 包管理器与 NuGet 注册表、安装包、将 NuGet 程序集转为 Unity 包、冻结依赖为本地压缩包。
+**A command-line workflow for Unity dependencies.**
 
-## 安装
+English | [中文](README.zh.md)
 
-自本仓库安装或构建：
+UUPM manages Unity registry sources, installs packages from Unity registries and NuGet, converts NuGet packages into Unity-consumable package layouts, and freezes project dependencies into local artifacts for offline or reproducible use.
+
+## Why use UUPM
+
+- **One CLI for two package ecosystems** - Use the same `install` command for Unity registry packages and NuGet packages.
+- **Offline-ready workflows** - Embed a Unity registry package as a local `.tgz`, or freeze an entire project into local artifacts.
+- **Unity-friendly NuGet import** - Convert `.nupkg` packages into `org.nuget.*` package folders with generated `.meta` files.
+- **Centralized local config** - Keep registry definitions and Unity editor paths in a single user-level config file.
+
+## Quick Start
+
+Install from the repository root:
 
 ```bash
 cargo install --path .
 ```
 
+Or build a release binary:
+
 ```bash
 cargo build --release
 ```
 
-后者产物为 `target/release/uupm`（Windows 为 `uupm.exe`），请加入 `PATH` 或复制到常用目录。需要本机已安装 Rust 工具链。
+The binary will be available at `target/release/uupm` (`uupm.exe` on Windows).
 
-与清单相关的命令请在 Unity 工程根目录执行（含 `Packages` 目录）。全局配置位于 **`~/.upmrc`**，首次使用时会自动生成；Windows 下可用 `uupm editor scan` 尝试扫描编辑器路径。
+Run project-level commands from the Unity project root, where the `Packages` directory exists. If `Packages/manifest.json` does not exist yet, the first Unity registry install will create a minimal manifest automatically.
 
-## 用法
+## Common Workflows
 
-下列为与 `uupm --help` 及各子命令帮助一致的结构说明（中文释义）。
-
-```text
-用法: uupm [命令]
-
-命令:
-  install|i [选项] <名称> [源]  安装包（默认可从 Unity 注册表安装，-n 时从 NuGet 安装）
-  freeze|f                      冻结依赖为本地包
-  registry|r                    管理注册表
-  editor|e                      管理 Unity 编辑器路径
-
-选项:
-  -h, --help     显示帮助
-  -V, --version  显示版本
-
-无子命令时打印标识横幅。
-```
-
-```text
-用法: uupm registry|r <命令>
-
-说明: 管理注册表。
-
-命令:
-  add|a [选项] <名称> <地址>   添加注册表
-  remove|r [选项] <名称>     删除注册表
-  list|l [选项]               列出注册表
-  default [选项] <名称>       将已存在的源设为默认
-
-选项:
-  -n, --nuget   操作对象为 NuGet 注册表（省略则为 Unity 包管理器源）
-  -h, --help    显示帮助
-```
-
-```text
-用法: uupm editor|e <命令>
-
-说明: 管理 Unity 编辑器安装路径。
-
-命令:
-  scan|s               扫描本机常见安装目录并写入配置
-  add|a <名称> <路径>  添加一条编辑器记录
-  remove|r <名称>      删除一条记录
-  list|l               列出记录
-  default <名称>       设置默认编辑器版本键
-
-选项:
-  -h, --help           显示帮助
-```
-
-```text
-用法: uupm install|i [选项] <名称> [源]
-
-说明: 安装包。
-
-参数:
-  名称   包名；Unity 注册表安装时为 com.xxx 形式，可写 @版本；NuGet 时为包 ID，可写 @版本
-  源     可选；仅在使用 -n 时表示 .upmrc 中已配置的 NuGet 源名称
-
-选项:
-  -n, --nuget   从 NuGet 安装
-  --embed      从 Unity 注册表安装时，将包下载为 Packages 下 .tgz 并写 file: 引用（不可与 -n 同用）
-  -h, --help   显示帮助
-```
-
-示例：
+### Install a Unity registry package
 
 ```bash
 uupm install com.unity.ide.rider
-uupm i com.example.tools@2.1.0 --embed
-uupm install -n Newtonsoft.Json
-uupm r add MyUPM https://example.com/npm
-uupm registry default MyUPM
-uupm e scan
-uupm freeze
+uupm i com.example.tools@2.1.0
 ```
 
-## 功能
+Without `-n`, UUPM resolves the package from a Unity registry and writes the selected version into `Packages/manifest.json`.
 
-- [x] 配置 Unity 包管理器注册表
-- [x] 配置 NuGet 注册表
-- [x] 设置默认注册表名称
-- [x] 从 Unity 注册表安装包
-- [x] 从 NuGet 安装包
-- [x] 安装时可选将 Unity 注册表包嵌入为本地压缩包
-- [x] 冻结依赖为离线模式
-- [x] 配置与扫描 Unity 编辑器路径
-- [x] 设置默认编辑器版本键
-- [ ] 列出已安装包
-- [ ] 升级包
-- [ ] 移除包
-- [ ] 新建包脚手架
-- [ ] 发布包到注册表
+### Install and embed a Unity registry package
 
-## 许可证
+```bash
+uupm i com.example.tools@2.1.0 --embed
+```
 
-MIT
+This downloads `Packages/com.example.tools-2.1.0.tgz` and writes a `file:` dependency into the manifest instead of a registry version string.
+
+### Install a NuGet package
+
+```bash
+uupm install -n Newtonsoft.Json
+uupm i -n MyLibrary PrivateFeedName
+```
+
+With `-n` or `--nuget`, UUPM downloads the NuGet package, converts it into a Unity package layout under `Packages/`, and generates `.meta` files.
+
+### Freeze project dependencies
+
+```bash
+uupm freeze
+uupm f
+```
+
+UUPM resolves the current manifest, downloads registry packages as local `.tgz` files or copies built-in Unity packages, updates dependencies to `file:` references, and writes a backup to `Packages/manifest.src.json`.
+
+### Manage registries
+
+```bash
+uupm registry add CustomUPM https://registry.example.com/npm
+uupm registry default CustomUPM
+uupm registry add NugetOrg https://api.nuget.org/v3/index.json -n
+uupm registry default NugetOrg -n
+```
+
+### Manage Unity editor paths
+
+```bash
+uupm editor scan
+uupm editor list
+uupm editor default 2022.3.16f1
+uupm editor add 2022.3.16f1 "C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.16f1"
+```
+
+## Command Overview
+
+### Top-level commands
+
+| Command | Alias | Description |
+|------|------|------|
+| `install` | `i` | Install from a Unity registry or NuGet |
+| `freeze` | `f` | Freeze manifest dependencies into local artifacts |
+| `registry` | `r` | Manage package registries |
+| `editor` | `e` | Manage Unity editor paths |
+
+Global flags: `--help`, `--version`.
+
+### `install`
+
+```text
+uupm install <name> [source]
+```
+
+- Default mode installs from a Unity registry.
+- `name` supports `com.vendor.package` and `com.vendor.package@version`.
+- `--embed` downloads a `.tgz` into `Packages` and writes a `file:` dependency.
+- `-n` or `--nuget` switches the workflow to NuGet.
+- `[source]` is only used with NuGet and refers to a configured source name in `~/.upmrc`.
+
+### `registry`
+
+| Subcommand | Alias | Description |
+|--------|------|------|
+| `add <name> <url>` | `a` | Add a registry |
+| `remove <name>` | `r` | Remove a registry |
+| `list` | `l` | List registries |
+| `default <name>` | - | Set the default registry |
+
+Use `-n` to operate on NuGet registries instead of Unity registries.
+
+### `editor`
+
+| Subcommand | Alias | Description |
+|--------|------|------|
+| `scan` | `s` | Scan common install locations and merge them into config |
+| `add <name> <path>` | `a` | Register an editor path manually |
+| `remove <name>` | `r` | Remove an editor record |
+| `list` | `l` | List editor records |
+| `default <name>` | - | Set the default editor key |
+
+## Configuration
+
+UUPM stores user-level configuration in `~/.upmrc`.
+
+| Section | Purpose |
+|--------|------|
+| `registry.origin` | Unity registry source names, URLs, and the default source |
+| `registry.nuget` | NuGet source names, index URLs, and the default source |
+| `editor.version` | Unity version keys mapped to editor install paths |
+| `editor.default` | Default Unity editor key used by workflows such as `freeze` |
+
+The file is created automatically on first use. On Windows, `uupm editor scan` can populate common Unity install locations.
+
+## Current Scope
+
+- Manage Unity and NuGet registries
+- Install Unity registry packages
+- Install Unity registry packages as embedded local `.tgz` files
+- Install NuGet packages as Unity package folders
+- Freeze manifest dependencies into local artifacts
+- Manage Unity editor paths and defaults
+
+Not implemented yet:
+
+- List installed packages
+- Upgrade packages
+- Remove packages
+- Create package scaffolds
+- Publish packages to registries
+
+## License
+
+[MIT](LICENSE)
