@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -208,6 +208,26 @@ pub fn remove_registry(name: &str, kind: RegistryKind) -> Result<()> {
     Ok(())
 }
 
+pub fn set_default_origin_registry(name: &str) -> Result<()> {
+    let mut c = read_configs()?;
+    if !c.registry.origin.source.contains_key(name) {
+        bail!("unknown UPM registry name {:?}", name);
+    }
+    c.registry.origin.default = name.to_string();
+    write_configs(&c)?;
+    Ok(())
+}
+
+pub fn set_default_nuget_registry(name: &str) -> Result<()> {
+    let mut c = read_configs()?;
+    if !c.registry.nuget.source.contains_key(name) {
+        bail!("unknown NuGet registry name {:?}", name);
+    }
+    c.registry.nuget.default = name.to_string();
+    write_configs(&c)?;
+    Ok(())
+}
+
 pub fn list_registries(kind: RegistryKind) -> Result<()> {
     let c = read_configs()?;
     match kind {
@@ -244,6 +264,16 @@ pub fn add_editor(name: &str, path: &str) -> Result<()> {
 pub fn remove_editor(name: &str) -> Result<()> {
     let mut c = read_configs()?;
     c.editor.version.remove(name);
+    write_configs(&c)?;
+    Ok(())
+}
+
+pub fn set_default_editor(name: &str) -> Result<()> {
+    let mut c = read_configs()?;
+    if !c.editor.version.contains_key(name) {
+        bail!("unknown editor version key {:?}", name);
+    }
+    c.editor.default = name.to_string();
     write_configs(&c)?;
     Ok(())
 }

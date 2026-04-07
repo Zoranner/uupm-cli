@@ -1,15 +1,17 @@
 use crate::config::{default_origin_registry_url, read_configs};
-use crate::manifest::{Manifest, RegistryPackageBody, ScopedRegistry};
+use crate::manifest::{
+    dependencies_string_map, load_manifest_value, save_manifest_pretty,
+    scoped_registries_from_value, RegistryPackageBody, ScopedRegistry, MANIFEST_PATH,
+};
 use crate::spinner::{step_spinner, SpinnerSuccess};
 use anyhow::{Context, Result};
 use dialoguer::{theme::ColorfulTheme, Select};
 use reqwest::Client;
 use serde::Deserialize;
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-const MANIFEST_PATH: &str = "Packages/manifest.json";
 
 const BUILD_IN_PACKAGES: &[&str] = &[
     "com.unity.2d.sprite",
@@ -56,14 +58,10 @@ pub async fn freeze_packages(client: &Client) -> Result<()> {
         println!("No {MANIFEST_PATH} file exists in the current directory.");
         return Ok(());
     }
-    let manifest_raw = fs::read_to_string(MANIFEST_PATH)?;
-    let mut manifest: Manifest =
-        serde_json::from_str(&manifest_raw).with_context(|| format!("parse {}", MANIFEST_PATH))?;
+    let mut manifest_v = load_manifest_value(MANIFEST_PATH)?;
 
-    let mut package_map: BTreeMap<String, String> = BTreeMap::new();
-    for (name, ver) in &manifest.dependencies {
-        package_map.insert(name.clone(), ver.clone());
-    }
+    let mut package_map = dependencies_string_map(&manifest_v);
+    let scoped = scoped_registries_from_value(&manifest_v);
 
     while !package_map.is_empty() {
         let (package_name, package_version) = package_map
@@ -73,11 +71,7 @@ pub async fn freeze_packages(client: &Client) -> Result<()> {
             .unwrap();
         package_map.remove(&package_name);
 
-        let registry_url = match_registry_url(
-            &package_name,
-            &manifest.scoped_registries,
-            &default_registry_url,
-        );
+        let registry_url = match_registry_url(&package_name, &scoped, &default_registry_url);
 
         let ep = editor_path.clone();
         let pn = package_name.clone();
@@ -88,27 +82,34 @@ pub async fn freeze_packages(client: &Client) -> Result<()> {
             freeze_single(&c, &ep, &pn, &pv, &ru).await
         })
         .await?;
-        apply_patch(&mut manifest, &mut package_map, outcome.patch);
+        apply_patch(&mut manifest_v, &mut package_map, outcome.patch);
     }
 
     if Path::new(MANIFEST_PATH).exists() {
         fs::copy(MANIFEST_PATH, "Packages/manifest.src.json")?;
         fs::remove_file(MANIFEST_PATH)?;
     }
-    fs::write(MANIFEST_PATH, serde_json::to_string_pretty(&manifest)?)?;
+    save_manifest_pretty(MANIFEST_PATH, &manifest_v)?;
     Ok(())
 }
 
 fn apply_patch(
-    manifest: &mut Manifest,
+    manifest: &mut Value,
     package_map: &mut BTreeMap<String, String>,
     patch: FreezePatch,
 ) {
+    let Some(root) = manifest.as_object_mut() else {
+        return;
+    };
+    let deps = root.entry("dependencies").or_insert_with(|| json!({}));
+    let Some(dep_obj) = deps.as_object_mut() else {
+        return;
+    };
     if let Some(name) = patch.remove_dep {
-        manifest.dependencies.remove(&name);
+        dep_obj.remove(&name);
     }
     if let Some((k, v)) = patch.set_dep {
-        manifest.dependencies.insert(k, v);
+        dep_obj.insert(k, Value::String(v));
     }
     merge_dependencies(package_map, &patch.merge_deps);
 }
@@ -304,20 +305,11 @@ fn add_to_package_map(map: &mut BTreeMap<String, String>, name: &str, version: &
 }
 
 fn compare_versions(v1: &str, v2: &str) -> i32 {
-    let a: Vec<u32> = v1.split('.').filter_map(|s| s.parse().ok()).collect();
-    let b: Vec<u32> = v2.split('.').filter_map(|s| s.parse().ok()).collect();
-    let n = a.len().max(b.len());
-    for i in 0..n {
-        let x = *a.get(i).unwrap_or(&0);
-        let y = *b.get(i).unwrap_or(&0);
-        if x > y {
-            return 1;
-        }
-        if x < y {
-            return -1;
-        }
+    match crate::versions::cmp_version_strings(v1, v2) {
+        std::cmp::Ordering::Less => -1,
+        std::cmp::Ordering::Equal => 0,
+        std::cmp::Ordering::Greater => 1,
     }
-    0
 }
 
 fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {

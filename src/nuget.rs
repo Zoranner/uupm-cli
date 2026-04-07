@@ -1,6 +1,7 @@
 use crate::config::read_configs;
 use crate::meta::{generate_meta_files, MetaTemplateManager};
 use crate::spinner::step_spinner;
+use crate::versions::pick_latest_stable;
 use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
 use serde_json::{json, Map, Value};
@@ -196,22 +197,6 @@ async fn get_nuget_base_url(client: &Client, source: Option<&str>) -> Result<Str
         }
     }
     Ok(OFFICIAL_FLAT.to_string())
-}
-
-fn pick_latest_stable(versions: &[String]) -> Result<String> {
-    let filtered: Vec<&String> = versions
-        .iter()
-        .filter(|v| {
-            let l = v.to_lowercase();
-            !l.contains("-preview") && !l.contains("-beta") && !l.contains("-rc")
-        })
-        .collect();
-    let last = filtered
-        .last()
-        .copied()
-        .or_else(|| versions.last())
-        .context("no versions available")?;
-    Ok(last.clone())
 }
 
 fn read_nuspec_from_nupkg(nupkg_path: &Path, kebab_name: &str) -> Result<String> {

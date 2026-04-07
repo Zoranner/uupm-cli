@@ -4,12 +4,15 @@ mod manifest;
 mod meta;
 mod nuget;
 mod spinner;
+mod upm;
+mod versions;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use config::{
     add_editor, add_registry, list_editors, list_registries, remove_editor, remove_registry,
-    scan_and_merge_editors, RegistryKind,
+    scan_and_merge_editors, set_default_editor, set_default_nuget_registry,
+    set_default_origin_registry, RegistryKind,
 };
 use reqwest::Client;
 
@@ -22,15 +25,20 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Install a package (UPM stub; use --nuget for NuGet)
+    /// Install a package from UPM registry (semver in manifest), or from NuGet with -n
+    #[command(alias = "i")]
     Install {
         name: String,
         #[arg(long, short = 'n')]
         nuget: bool,
+        /// Download UPM package as .tgz into Packages/ and set dependency to file:… (not for NuGet)
+        #[arg(long, conflicts_with = "nuget")]
+        embed: bool,
         /// NuGet source name from ~/.upmrc (optional)
         source: Option<String>,
     },
     /// Freeze manifest dependencies to local tarballs / embedded packages
+    #[command(alias = "f")]
     Freeze,
     /// Manage registries
     #[command(subcommand, alias = "r")]
@@ -63,6 +71,12 @@ enum RegistryCli {
         #[arg(long, short = 'n')]
         nuget: bool,
     },
+    /// Set default UPM or NuGet registry name (must exist in sources)
+    Default {
+        name: String,
+        #[arg(long, short = 'n')]
+        nuget: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -79,6 +93,8 @@ enum EditorCli {
     /// List configured editors
     #[command(alias = "l")]
     List,
+    /// Set default editor (version key from `editor list`)
+    Default { name: String },
 }
 
 fn print_banner() {
@@ -103,15 +119,16 @@ async fn main() -> Result<()> {
         Some(Commands::Install {
             name,
             nuget,
+            embed,
             source,
         }) => {
             if nuget {
                 nuget::install_nuget_package(&client, &name, source.as_deref()).await?;
                 println!("Install finished!");
             } else {
-                println!("Installing package: {name}...");
-                println!("UPM install is not implemented yet (original UnityPackageResolver was a stub).");
-                println!("Use: uupm install -n {name} for NuGet packages.");
+                println!("Installing UPM package: {name}...");
+                upm::install_upm_package(&client, &name, embed).await?;
+                println!("Install finished!");
             }
         }
         Some(Commands::Freeze) => {
@@ -144,12 +161,20 @@ async fn main() -> Result<()> {
                 };
                 list_registries(kind)?;
             }
+            RegistryCli::Default { name, nuget } => {
+                if nuget {
+                    set_default_nuget_registry(&name)?;
+                } else {
+                    set_default_origin_registry(&name)?;
+                }
+            }
         },
         Some(Commands::Editor(sub)) => match sub {
             EditorCli::Scan => scan_and_merge_editors()?,
             EditorCli::Add { name, path } => add_editor(&name, &path)?,
             EditorCli::Remove { name } => remove_editor(&name)?,
             EditorCli::List => list_editors()?,
+            EditorCli::Default { name } => set_default_editor(&name)?,
         },
     }
 
