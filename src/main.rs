@@ -139,7 +139,12 @@ async fn main() -> Result<()> {
             println!("Freeze finished!");
         }
         Some(Commands::Registry(sub)) => match sub {
-            RegistryCli::Add { name, url, nuget, scopes } => {
+            RegistryCli::Add {
+                name,
+                url,
+                nuget,
+                scopes,
+            } => {
                 let kind = if nuget {
                     RegistryKind::Nuget
                 } else {

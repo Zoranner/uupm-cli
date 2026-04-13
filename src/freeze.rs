@@ -1,4 +1,4 @@
-use crate::config::{resolve_origin_registry, read_configs};
+use crate::config::{read_configs, resolve_origin_registry};
 use crate::manifest::{
     dependencies_string_map, load_manifest_value, save_manifest_pretty,
     scoped_registries_from_value, RegistryPackageBody, MANIFEST_PATH,
@@ -65,7 +65,9 @@ pub async fn freeze_packages(client: &Client) -> Result<()> {
     while let Some((package_name, package_version)) = package_map.pop_first() {
         // manifest scopedRegistries 优先，fallback 到 ~/.upmrc.toml
         let registry_url = if let Some(reg) = scoped.iter().find(|r| {
-            r.scopes.iter().any(|s| package_name.starts_with(s.as_str()))
+            r.scopes
+                .iter()
+                .any(|s| package_name.starts_with(s.as_str()))
         }) {
             reg.url.trim_end_matches('/').to_string()
         } else {
@@ -115,7 +117,9 @@ fn apply_patch(
 fn select_unity_version(configs: &crate::config::GlobalConfig) -> Result<String> {
     let keys: Vec<String> = configs.editor.versions.keys().cloned().collect();
     if keys.is_empty() {
-        anyhow::bail!("no Unity editors in ~/.upmrc.toml; run `uupm editor scan` or `uupm editor add`");
+        anyhow::bail!(
+            "no Unity editors in ~/.upmrc.toml; run `uupm editor scan` or `uupm editor add`"
+        );
     }
     // 只有一个版本时直接使用，无需交互
     if keys.len() == 1 {
@@ -222,9 +226,7 @@ async fn freeze_from_registry(
         .await
         .with_context(|| format!("failed to parse registry response for {package_name}"))?;
     let Some(version_info) = body.versions.get(package_version) else {
-        anyhow::bail!(
-            "version {package_version} not found in registry for {package_name}"
-        );
+        anyhow::bail!("version {package_version} not found in registry for {package_name}");
     };
     let tarball_name = format!("{package_name}-{package_version}.tgz");
     let download_url = &version_info.dist.tarball;

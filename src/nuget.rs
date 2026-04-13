@@ -13,7 +13,6 @@ use zip::ZipArchive;
 
 const PACKAGES_PATH: &str = "Packages";
 const UNIT_SCOPE: &str = "org.nuget";
-const OFFICIAL_FLAT: &str = "https://api.nuget.org/v3-flatcontainer/";
 
 #[derive(Clone)]
 struct ParsedNuspec {
@@ -40,7 +39,16 @@ pub async fn install_nuget_package(
         }
         installed.insert(spec.clone());
         println!("\n> {}", spec);
-        resolve_one(client, &meta_manager, &spec, source, true, &mut queue, &installed).await?;
+        resolve_one(
+            client,
+            &meta_manager,
+            &spec,
+            source,
+            true,
+            &mut queue,
+            &installed,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -101,7 +109,14 @@ async fn resolve_one(
         Path::new(PACKAGES_PATH).join(format!("{unity_pkg_name}-{target_version}"));
 
     step_spinner("Downloading nuget package...", async {
-        download_nupkg(client, &nuget_base_url, &kebab_name, &target_version, &nuget_pkg_path).await
+        download_nupkg(
+            client,
+            &nuget_base_url,
+            &kebab_name,
+            &target_version,
+            &nuget_pkg_path,
+        )
+        .await
     })
     .await?;
 
@@ -118,7 +133,13 @@ async fn resolve_one(
     }
 
     step_spinner("Converting package info...", async {
-        convert_package_info(&unity_pkg_path, &unity_pkg_name, pascal_name, &target_version, &parsed)
+        convert_package_info(
+            &unity_pkg_path,
+            &unity_pkg_name,
+            pascal_name,
+            &target_version,
+            &parsed,
+        )
     })
     .await?;
 
@@ -181,16 +202,16 @@ async fn get_nuget_base_url(client: &Client, source: Option<&str>) -> Result<Str
         return Err(anyhow!("unknown nuget source {:?}", source_name));
     };
     let index_url = &src.url;
-    let response = client.get(index_url).send().await;
-    let Ok(resp) = response else {
-        return Ok(OFFICIAL_FLAT.to_string());
-    };
-    let Ok(resp) = resp.error_for_status() else {
-        return Ok(OFFICIAL_FLAT.to_string());
-    };
-    let Ok(body) = resp.json::<Value>().await else {
-        return Ok(OFFICIAL_FLAT.to_string());
-    };
+    let body: Value = client
+        .get(index_url)
+        .send()
+        .await
+        .with_context(|| format!("network error fetching NuGet index {index_url}"))?
+        .error_for_status()
+        .with_context(|| format!("NuGet index {index_url} returned error"))?
+        .json()
+        .await
+        .with_context(|| format!("failed to parse NuGet index response from {index_url}"))?;
     if let Some(resources) = body.get("resources").and_then(|r| r.as_array()) {
         for r in resources {
             if r.get("@type").and_then(|t| t.as_str()) == Some("PackageBaseAddress/3.0.0") {
@@ -204,7 +225,12 @@ async fn get_nuget_base_url(client: &Client, source: Option<&str>) -> Result<Str
             }
         }
     }
-    Ok(OFFICIAL_FLAT.to_string())
+    // 源不是标准 NuGet v3 service index，当作 flat container 直接使用
+    let mut base = index_url.to_string();
+    if !base.ends_with('/') {
+        base.push('/');
+    }
+    Ok(base)
 }
 
 fn read_nuspec_from_nupkg(nupkg_path: &Path, kebab_name: &str) -> Result<String> {

@@ -11,13 +11,9 @@ pub struct MetaTemplateManager {
     templates: HashMap<String, String>,
 }
 
-#[repr(u16)]
-#[allow(dead_code)]
-enum MachineType {
-    X86 = 0x14c,
-    Arm64 = 0xaa64,
-    Amd64 = 0x8664,
-}
+const MACHINE_X86: u16 = 0x14c;
+const MACHINE_AMD64: u16 = 0x8664;
+const MACHINE_ARM64: u16 = 0xaa64;
 
 #[derive(Debug, Clone)]
 struct DllInfo {
@@ -146,9 +142,9 @@ fn analyze_dll(path: &Path) -> DllInfo {
     let clr_size = read_u32_le(&buffer, optional_header_offset + clr_header_offset + 4);
 
     let architecture: &'static str = match machine {
-        x if x == MachineType::X86 as u16 => "x86",
-        x if x == MachineType::Amd64 as u16 => "x64",
-        x if x == MachineType::Arm64 as u16 => "arm64",
+        MACHINE_X86 => "x86",
+        MACHINE_AMD64 => "x64",
+        MACHINE_ARM64 => "arm64",
         _ => "default",
     };
 

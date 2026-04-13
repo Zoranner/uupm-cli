@@ -215,7 +215,7 @@ pub fn scan_editor_versions() -> BTreeMap<String, String> {
 
 pub fn init_configs() -> Result<GlobalConfig> {
     let editor_versions = scan_editor_versions();
-    let default_editor = editor_versions.keys().next().cloned().unwrap_or_default();
+    let default_editor = editor_versions.keys().last().cloned().unwrap_or_default();
 
     let mut origin_sources = BTreeMap::new();
     origin_sources.insert(
@@ -268,13 +268,18 @@ pub fn add_registry(name: &str, url: &str, scopes: Vec<String>, kind: RegistryKi
         RegistryKind::Origin => {
             c.registry.origin.sources.insert(
                 name.to_string(),
-                OriginSource { url: url.to_string(), scopes },
+                OriginSource {
+                    url: url.to_string(),
+                    scopes,
+                },
             );
         }
         RegistryKind::Nuget => {
             c.registry.nuget.sources.insert(
                 name.to_string(),
-                NugetSource { url: url.to_string() },
+                NugetSource {
+                    url: url.to_string(),
+                },
             );
         }
     }
@@ -285,8 +290,12 @@ pub fn add_registry(name: &str, url: &str, scopes: Vec<String>, kind: RegistryKi
 pub fn remove_registry(name: &str, kind: RegistryKind) -> Result<()> {
     let mut c = read_configs()?;
     match kind {
-        RegistryKind::Origin => { c.registry.origin.sources.remove(name); }
-        RegistryKind::Nuget => { c.registry.nuget.sources.remove(name); }
+        RegistryKind::Origin => {
+            c.registry.origin.sources.remove(name);
+        }
+        RegistryKind::Nuget => {
+            c.registry.nuget.sources.remove(name);
+        }
     }
     write_configs(&c)?;
     Ok(())
@@ -335,7 +344,7 @@ pub fn resolve_origin_registry<'a>(
         for scope in &src.scopes {
             if package_name.starts_with(scope.as_str()) {
                 let len = scope.len();
-                if best.as_ref().map_or(true, |&(_, _, best_len)| len > best_len) {
+                if best.as_ref().is_none_or(|&(_, _, best_len)| len > best_len) {
                     best = Some((name.as_str(), src, len));
                 }
             }
@@ -351,7 +360,12 @@ pub fn resolve_origin_registry<'a>(
         .sources
         .get(default_name)
         .map(|src| (default_name.as_str(), src))
-        .with_context(|| format!("default origin registry {:?} not found in ~/.upmrc.toml", default_name))
+        .with_context(|| {
+            format!(
+                "default origin registry {:?} not found in ~/.upmrc.toml",
+                default_name
+            )
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +408,7 @@ pub fn scan_and_merge_editors() -> Result<()> {
         c.editor.versions.insert(k, v);
     }
     if c.editor.default.is_empty() {
-        c.editor.default = c.editor.versions.keys().next().cloned().unwrap_or_default();
+        c.editor.default = c.editor.versions.keys().last().cloned().unwrap_or_default();
     }
     write_configs(&c)?;
     println!("Editor entries updated.");

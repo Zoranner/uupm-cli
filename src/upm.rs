@@ -1,4 +1,4 @@
-use crate::config::{resolve_origin_registry, read_configs};
+use crate::config::{read_configs, resolve_origin_registry};
 use crate::manifest::{
     empty_manifest_object, load_manifest_value, save_manifest_pretty, scoped_registries_from_value,
     upsert_scoped_registry, RegistryPackageBody, MANIFEST_PATH,
@@ -34,7 +34,9 @@ pub async fn install_upm_package(client: &Client, spec: &str, embed: bool) -> Re
     // 1. manifest 里已有 scopedRegistries 匹配 → 直接用，不动 manifest
     let scoped = scoped_registries_from_value(&manifest_v);
     let registry_url = if let Some(reg) = scoped.iter().find(|r| {
-        r.scopes.iter().any(|s| package_name.starts_with(s.as_str()))
+        r.scopes
+            .iter()
+            .any(|s| package_name.starts_with(s.as_str()))
     }) {
         reg.url.trim_end_matches('/').to_string()
     } else {
@@ -45,12 +47,7 @@ pub async fn install_upm_package(client: &Client, spec: &str, embed: bool) -> Re
         // 非默认源 → 自动写入 manifest scopedRegistries
         if reg_name != configs.registry.origin.default {
             let scope = package_scope(package_name);
-            upsert_scoped_registry(
-                &mut manifest_v,
-                reg_name,
-                &url,
-                &scope,
-            )?;
+            upsert_scoped_registry(&mut manifest_v, reg_name, &url, &scope)?;
         }
         url
     };
@@ -79,9 +76,8 @@ pub async fn install_upm_package(client: &Client, spec: &str, embed: bool) -> Re
         }
         cleaned
     } else {
-        pick_latest_stable(&version_keys).with_context(|| {
-            format!("could not pick a version for {package_name}")
-        })?
+        pick_latest_stable(&version_keys)
+            .with_context(|| format!("could not pick a version for {package_name}"))?
     };
 
     let version_info = body
