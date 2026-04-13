@@ -24,6 +24,55 @@ struct ParsedNuspec {
     dependencies_map: BTreeMap<String, String>,
 }
 
+/// Upgrade a single NuGet package (by its Unity name `org.nuget.xxx` or Pascal name).
+/// Resolves latest version and re-runs the full install pipeline.
+pub async fn upgrade_nuget_package(
+    client: &Client,
+    name: &str,
+    source: Option<&str>,
+) -> Result<()> {
+    // Accept both "org.nuget.newtonsoft.json" and "Newtonsoft.Json"
+    let pascal = if let Some(rest) = name.strip_prefix("org.nuget.") {
+        // kebab → PascalCase is lossy; just pass the lowercase name, resolve_one lowercases anyway
+        rest.to_string()
+    } else {
+        name.to_string()
+    };
+    let meta_manager = MetaTemplateManager::new()?;
+    let mut queue = VecDeque::new();
+    let mut installed: HashSet<String> = HashSet::new();
+    println!("\n> {}", pascal);
+    resolve_one(
+        client,
+        &meta_manager,
+        &pascal,
+        source,
+        false,
+        &mut queue,
+        &installed,
+    )
+    .await?;
+    installed.insert(pascal);
+    while let Some(spec) = queue.pop_front() {
+        if installed.contains(&spec) {
+            continue;
+        }
+        installed.insert(spec.clone());
+        println!("\n> {}", spec);
+        resolve_one(
+            client,
+            &meta_manager,
+            &spec,
+            source,
+            false,
+            &mut queue,
+            &installed,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 pub async fn install_nuget_package(
     client: &Client,
     name: &str,

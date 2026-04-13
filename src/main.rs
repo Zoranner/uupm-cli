@@ -5,6 +5,7 @@ mod meta;
 mod nuget;
 mod remove;
 mod spinner;
+mod upgrade;
 mod upm;
 mod versions;
 
@@ -14,7 +15,9 @@ use config::{
     add_editor, add_registry, list_editors, list_registries, remove_editor, remove_registry,
     scan_and_merge_editors, set_default_editor, set_default_registry, RegistryKind,
 };
+use manifest::{dependencies_string_map, load_manifest_value, MANIFEST_PATH};
 use reqwest::Client;
+use std::path::Path;
 
 #[derive(Parser)]
 #[command(name = "uupm", version, about = "Unity Package Manager CLI (Rust)")]
@@ -40,6 +43,15 @@ enum Commands {
     /// Remove a package from manifest and clean up local artifacts
     #[command(alias = "rm")]
     Remove { name: String },
+    /// List packages in manifest
+    #[command(alias = "ls")]
+    List,
+    /// Upgrade a package (or all packages) to the latest registry version
+    #[command(alias = "up")]
+    Upgrade {
+        /// Package name to upgrade; omit to upgrade all
+        name: Option<String>,
+    },
     /// Freeze manifest dependencies to local tarballs / embedded packages
     #[command(alias = "f")]
     Freeze,
@@ -140,6 +152,13 @@ async fn main() -> Result<()> {
         Some(Commands::Remove { name }) => {
             remove::remove_package(&name)?;
         }
+        Some(Commands::List) => {
+            list_packages()?;
+        }
+        Some(Commands::Upgrade { name }) => {
+            upgrade::upgrade_packages(&client, name.as_deref()).await?;
+            println!("Upgrade finished!");
+        }
         Some(Commands::Freeze) => {
             println!("Freezing project packages...");
             freeze::freeze_packages(&client).await?;
@@ -193,5 +212,30 @@ async fn main() -> Result<()> {
         },
     }
 
+    Ok(())
+}
+
+fn list_packages() -> Result<()> {
+    if !Path::new(MANIFEST_PATH).exists() {
+        println!("No {} found.", MANIFEST_PATH);
+        return Ok(());
+    }
+    let manifest_v = load_manifest_value(MANIFEST_PATH)?;
+    let deps = dependencies_string_map(&manifest_v);
+    if deps.is_empty() {
+        println!("No dependencies.");
+        return Ok(());
+    }
+    let name_w = deps.keys().map(|k| k.len()).max().unwrap_or(0);
+    for (name, version) in &deps {
+        let kind = if version.starts_with("file:") {
+            "local"
+        } else if version.starts_with("git:") || version.starts_with("https://") {
+            "git"
+        } else {
+            "registry"
+        };
+        println!("{:<width$}  {}  ({})", name, version, kind, width = name_w);
+    }
     Ok(())
 }
