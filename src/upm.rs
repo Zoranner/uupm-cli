@@ -1,7 +1,7 @@
-use crate::config::{default_origin_registry_url, read_configs};
+use crate::config::{resolve_origin_registry, read_configs};
 use crate::manifest::{
     empty_manifest_object, load_manifest_value, save_manifest_pretty, scoped_registries_from_value,
-    RegistryPackageBody, ScopedRegistry, MANIFEST_PATH,
+    upsert_scoped_registry, RegistryPackageBody, MANIFEST_PATH,
 };
 use crate::versions::pick_latest_stable;
 use anyhow::{Context, Result};
@@ -24,7 +24,6 @@ pub async fn install_upm_package(client: &Client, spec: &str, embed: bool) -> Re
     let requested = parts.get(1).map(|s| s.trim()).filter(|s| !s.is_empty());
 
     let configs = read_configs()?;
-    let default_url = default_origin_registry_url(&configs)?;
 
     let mut manifest_v = if Path::new(MANIFEST_PATH).exists() {
         load_manifest_value(MANIFEST_PATH)?
@@ -32,17 +31,38 @@ pub async fn install_upm_package(client: &Client, spec: &str, embed: bool) -> Re
         empty_manifest_object()
     };
 
+    // 1. manifest 里已有 scopedRegistries 匹配 → 直接用，不动 manifest
     let scoped = scoped_registries_from_value(&manifest_v);
-    let registry_url = match_registry_url(package_name, &scoped, &default_url);
+    let registry_url = if let Some(reg) = scoped.iter().find(|r| {
+        r.scopes.iter().any(|s| package_name.starts_with(s.as_str()))
+    }) {
+        reg.url.trim_end_matches('/').to_string()
+    } else {
+        // 2. 从 ~/.upmrc.toml 的 origin sources 里按 scope 匹配
+        let (reg_name, reg_src) = resolve_origin_registry(package_name, &configs)?;
+        let url = reg_src.url.trim_end_matches('/').to_string();
 
-    let url = format!("{registry_url}/{package_name}");
-    println!("Fetching {} …", url);
+        // 非默认源 → 自动写入 manifest scopedRegistries
+        if reg_name != configs.registry.origin.default {
+            let scope = package_scope(package_name);
+            upsert_scoped_registry(
+                &mut manifest_v,
+                reg_name,
+                &url,
+                &scope,
+            )?;
+        }
+        url
+    };
+
+    let fetch_url = format!("{registry_url}/{package_name}");
+    println!("Fetching {} …", fetch_url);
     let body: RegistryPackageBody = client
-        .get(&url)
+        .get(&fetch_url)
         .send()
         .await?
         .error_for_status()
-        .with_context(|| format!("GET {url}"))?
+        .with_context(|| format!("GET {fetch_url}"))?
         .json()
         .await
         .with_context(|| format!("parse registry JSON for {package_name}"))?;
@@ -60,7 +80,7 @@ pub async fn install_upm_package(client: &Client, spec: &str, embed: bool) -> Re
         cleaned
     } else {
         pick_latest_stable(&version_keys).with_context(|| {
-            format!("could not pick a version for {package_name} (registry returned no versions)")
+            format!("could not pick a version for {package_name}")
         })?
     };
 
@@ -116,13 +136,12 @@ pub async fn install_upm_package(client: &Client, spec: &str, embed: bool) -> Re
     Ok(())
 }
 
-fn match_registry_url(package_name: &str, scoped: &[ScopedRegistry], default: &str) -> String {
-    for reg in scoped {
-        for scope in &reg.scopes {
-            if package_name.starts_with(scope) {
-                return reg.url.trim_end_matches('/').to_string();
-            }
-        }
+/// 取包名前两段作为 scope，例如 `com.unity.addressables` → `com.unity`
+fn package_scope(package_name: &str) -> String {
+    let parts: Vec<&str> = package_name.splitn(3, '.').collect();
+    if parts.len() >= 2 {
+        format!("{}.{}", parts[0], parts[1])
+    } else {
+        package_name.to_string()
     }
-    default.trim_end_matches('/').to_string()
 }

@@ -5,6 +5,10 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+// ---------------------------------------------------------------------------
+// Config structs
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalConfig {
     pub registry: RegistrySection,
@@ -13,27 +17,56 @@ pub struct GlobalConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistrySection {
-    pub origin: RegistrySourceBlock,
-    pub nuget: RegistrySourceBlock,
+    pub origin: OriginGroup,
+    pub nuget: NugetGroup,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RegistrySourceBlock {
+pub struct OriginGroup {
     pub default: String,
-    pub source: BTreeMap<String, String>,
+    #[serde(default)]
+    pub sources: BTreeMap<String, OriginSource>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OriginSource {
+    pub url: String,
+    /// Scope prefixes this registry handles. Empty = default/catch-all.
+    #[serde(default)]
+    pub scopes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NugetGroup {
+    pub default: String,
+    #[serde(default)]
+    pub sources: BTreeMap<String, NugetSource>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NugetSource {
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EditorSection {
     pub default: String,
     #[serde(default)]
-    pub version: BTreeMap<String, String>,
+    pub versions: BTreeMap<String, String>,
 }
+
+// ---------------------------------------------------------------------------
+// Config file path
+// ---------------------------------------------------------------------------
 
 fn config_path() -> Result<std::path::PathBuf> {
     let home = dirs::home_dir().context("cannot resolve home directory")?;
-    Ok(home.join(".upmrc"))
+    Ok(home.join(".upmrc.toml"))
 }
+
+// ---------------------------------------------------------------------------
+// Read / write
+// ---------------------------------------------------------------------------
 
 pub fn read_configs() -> Result<GlobalConfig> {
     let path = config_path()?;
@@ -42,23 +75,22 @@ pub fn read_configs() -> Result<GlobalConfig> {
         write_configs(&data)?;
         return Ok(data);
     }
-    let raw = fs::read_to_string(&path).with_context(|| format!("read {:?}", path))?;
-    match serde_yaml::from_str::<GlobalConfig>(&raw) {
-        Ok(c) => Ok(c),
-        Err(e) => {
-            anyhow::bail!("invalid .upmrc: {}\nFix or delete ~/.upmrc to reset.", e)
-        }
-    }
+    let raw = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    toml::from_str::<GlobalConfig>(&raw)
+        .context("invalid ~/.upmrc.toml — fix or delete it to reset")
 }
 
 pub fn write_configs(configs: &GlobalConfig) -> Result<()> {
     let path = config_path()?;
-    let yaml = serde_yaml::to_string(configs)?;
-    fs::write(&path, yaml).with_context(|| format!("write {:?}", path))?;
+    let content = toml::to_string_pretty(configs)?;
+    fs::write(&path, content).with_context(|| format!("write {}", path.display()))?;
     Ok(())
 }
 
-/// Windows paths aligned with the original Node implementation.
+// ---------------------------------------------------------------------------
+// Editor scanning
+// ---------------------------------------------------------------------------
+
 #[cfg(windows)]
 fn editor_base_dirs() -> Vec<std::path::PathBuf> {
     // Unity Hub 默认编辑器安装目录，每个子目录为一个版本号
@@ -66,6 +98,11 @@ fn editor_base_dirs() -> Vec<std::path::PathBuf> {
         .into_iter()
         .map(std::path::PathBuf::from)
         .collect()
+}
+
+#[cfg(not(windows))]
+fn editor_base_dirs() -> Vec<std::path::PathBuf> {
+    vec![]
 }
 
 /// 扫描 `C:\Program Files\` 下所有以 `Unity ` 开头的目录（手动安装格式：`Unity 2022.3.52f1`）
@@ -91,11 +128,6 @@ fn scan_manual_install_dirs() -> Vec<std::path::PathBuf> {
 
 #[cfg(not(windows))]
 fn scan_manual_install_dirs() -> Vec<std::path::PathBuf> {
-    vec![]
-}
-
-#[cfg(not(windows))]
-fn editor_base_dirs() -> Vec<std::path::PathBuf> {
     vec![]
 }
 
@@ -177,39 +209,52 @@ pub fn scan_editor_versions() -> BTreeMap<String, String> {
     versions
 }
 
+// ---------------------------------------------------------------------------
+// Init defaults
+// ---------------------------------------------------------------------------
+
 pub fn init_configs() -> Result<GlobalConfig> {
-    let editor_version = scan_editor_versions();
-    let default_editor = editor_version.keys().next().cloned().unwrap_or_default();
+    let editor_versions = scan_editor_versions();
+    let default_editor = editor_versions.keys().next().cloned().unwrap_or_default();
 
     let mut origin_sources = BTreeMap::new();
     origin_sources.insert(
         "Unity".to_string(),
-        "https://packages.unity.com".to_string(),
+        OriginSource {
+            url: "https://packages.unity.com".to_string(),
+            scopes: vec![],
+        },
     );
 
     let mut nuget_sources = BTreeMap::new();
     nuget_sources.insert(
-        "Nuget".to_string(),
-        "https://api.nuget.org/v3/index.json".to_string(),
+        "NuGet".to_string(),
+        NugetSource {
+            url: "https://api.nuget.org/v3/index.json".to_string(),
+        },
     );
 
     Ok(GlobalConfig {
         registry: RegistrySection {
-            origin: RegistrySourceBlock {
+            origin: OriginGroup {
                 default: "Unity".to_string(),
-                source: origin_sources,
+                sources: origin_sources,
             },
-            nuget: RegistrySourceBlock {
-                default: "Nuget".to_string(),
-                source: nuget_sources,
+            nuget: NugetGroup {
+                default: "NuGet".to_string(),
+                sources: nuget_sources,
             },
         },
         editor: EditorSection {
             default: default_editor,
-            version: editor_version,
+            versions: editor_versions,
         },
     })
 }
+
+// ---------------------------------------------------------------------------
+// Registry helpers
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegistryKind {
@@ -217,20 +262,20 @@ pub enum RegistryKind {
     Nuget,
 }
 
-pub fn add_registry(name: &str, url: &str, kind: RegistryKind) -> Result<()> {
+pub fn add_registry(name: &str, url: &str, scopes: Vec<String>, kind: RegistryKind) -> Result<()> {
     let mut c = read_configs()?;
     match kind {
         RegistryKind::Origin => {
-            c.registry
-                .origin
-                .source
-                .insert(name.to_string(), url.to_string());
+            c.registry.origin.sources.insert(
+                name.to_string(),
+                OriginSource { url: url.to_string(), scopes },
+            );
         }
         RegistryKind::Nuget => {
-            c.registry
-                .nuget
-                .source
-                .insert(name.to_string(), url.to_string());
+            c.registry.nuget.sources.insert(
+                name.to_string(),
+                NugetSource { url: url.to_string() },
+            );
         }
     }
     write_configs(&c)?;
@@ -240,33 +285,29 @@ pub fn add_registry(name: &str, url: &str, kind: RegistryKind) -> Result<()> {
 pub fn remove_registry(name: &str, kind: RegistryKind) -> Result<()> {
     let mut c = read_configs()?;
     match kind {
+        RegistryKind::Origin => { c.registry.origin.sources.remove(name); }
+        RegistryKind::Nuget => { c.registry.nuget.sources.remove(name); }
+    }
+    write_configs(&c)?;
+    Ok(())
+}
+
+pub fn set_default_registry(name: &str, kind: RegistryKind) -> Result<()> {
+    let mut c = read_configs()?;
+    match kind {
         RegistryKind::Origin => {
-            c.registry.origin.source.remove(name);
+            if !c.registry.origin.sources.contains_key(name) {
+                bail!("unknown origin registry {:?}", name);
+            }
+            c.registry.origin.default = name.to_string();
         }
         RegistryKind::Nuget => {
-            c.registry.nuget.source.remove(name);
+            if !c.registry.nuget.sources.contains_key(name) {
+                bail!("unknown nuget registry {:?}", name);
+            }
+            c.registry.nuget.default = name.to_string();
         }
     }
-    write_configs(&c)?;
-    Ok(())
-}
-
-pub fn set_default_origin_registry(name: &str) -> Result<()> {
-    let mut c = read_configs()?;
-    if !c.registry.origin.source.contains_key(name) {
-        bail!("unknown UPM registry name {:?}", name);
-    }
-    c.registry.origin.default = name.to_string();
-    write_configs(&c)?;
-    Ok(())
-}
-
-pub fn set_default_nuget_registry(name: &str) -> Result<()> {
-    let mut c = read_configs()?;
-    if !c.registry.nuget.source.contains_key(name) {
-        bail!("unknown NuGet registry name {:?}", name);
-    }
-    c.registry.nuget.default = name.to_string();
     write_configs(&c)?;
     Ok(())
 }
@@ -274,46 +315,66 @@ pub fn set_default_nuget_registry(name: &str) -> Result<()> {
 pub fn list_registries(kind: RegistryKind) -> Result<()> {
     let c = read_configs()?;
     match kind {
-        RegistryKind::Origin => println!(
-            "{}",
-            serde_json::to_string_pretty(&c.registry.origin.source)?
-        ),
-        RegistryKind::Nuget => println!(
-            "{}",
-            serde_json::to_string_pretty(&c.registry.nuget.source)?
-        ),
+        RegistryKind::Origin => println!("{}", toml::to_string_pretty(&c.registry.origin.sources)?),
+        RegistryKind::Nuget => println!("{}", toml::to_string_pretty(&c.registry.nuget.sources)?),
     }
     Ok(())
 }
 
-pub fn default_origin_registry_url(config: &GlobalConfig) -> Result<String> {
-    let name = &config.registry.origin.default;
-    config
-        .registry
-        .origin
-        .source
-        .get(name)
-        .cloned()
-        .with_context(|| format!("default origin registry {:?} missing in .upmrc", name))
+/// Find the best registry URL for a given package name.
+/// Checks scoped registries first (most specific scope wins), then falls back to default.
+pub fn resolve_origin_registry<'a>(
+    package_name: &str,
+    config: &'a GlobalConfig,
+) -> Result<(&'a str, &'a OriginSource)> {
+    let origin = &config.registry.origin;
+
+    // 1. 找 scopes 最长前缀匹配（最具体的优先）
+    let mut best: Option<(&str, &OriginSource, usize)> = None;
+    for (name, src) in &origin.sources {
+        for scope in &src.scopes {
+            if package_name.starts_with(scope.as_str()) {
+                let len = scope.len();
+                if best.as_ref().map_or(true, |&(_, _, best_len)| len > best_len) {
+                    best = Some((name.as_str(), src, len));
+                }
+            }
+        }
+    }
+    if let Some((name, src, _)) = best {
+        return Ok((name, src));
+    }
+
+    // 2. 回退到默认源
+    let default_name = &origin.default;
+    origin
+        .sources
+        .get(default_name)
+        .map(|src| (default_name.as_str(), src))
+        .with_context(|| format!("default origin registry {:?} not found in ~/.upmrc.toml", default_name))
 }
+
+// ---------------------------------------------------------------------------
+// Editor helpers
+// ---------------------------------------------------------------------------
 
 pub fn add_editor(name: &str, path: &str) -> Result<()> {
     let mut c = read_configs()?;
-    c.editor.version.insert(name.to_string(), path.to_string());
+    c.editor.versions.insert(name.to_string(), path.to_string());
     write_configs(&c)?;
     Ok(())
 }
 
 pub fn remove_editor(name: &str) -> Result<()> {
     let mut c = read_configs()?;
-    c.editor.version.remove(name);
+    c.editor.versions.remove(name);
     write_configs(&c)?;
     Ok(())
 }
 
 pub fn set_default_editor(name: &str) -> Result<()> {
     let mut c = read_configs()?;
-    if !c.editor.version.contains_key(name) {
+    if !c.editor.versions.contains_key(name) {
         bail!("unknown editor version key {:?}", name);
     }
     c.editor.default = name.to_string();
@@ -323,18 +384,17 @@ pub fn set_default_editor(name: &str) -> Result<()> {
 
 pub fn list_editors() -> Result<()> {
     let c = read_configs()?;
-    println!("{}", serde_json::to_string_pretty(&c.editor.version)?);
+    println!("{}", toml::to_string_pretty(&c.editor.versions)?);
     Ok(())
 }
 
-/// Rescan install folders and merge into `editor.version` (keeps manual entries unless overwritten by same version key).
 pub fn scan_and_merge_editors() -> Result<()> {
     let mut c = read_configs()?;
     for (k, v) in scan_editor_versions() {
-        c.editor.version.insert(k, v);
+        c.editor.versions.insert(k, v);
     }
     if c.editor.default.is_empty() {
-        c.editor.default = c.editor.version.keys().next().cloned().unwrap_or_default();
+        c.editor.default = c.editor.versions.keys().next().cloned().unwrap_or_default();
     }
     write_configs(&c)?;
     println!("Editor entries updated.");

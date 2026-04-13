@@ -177,9 +177,10 @@ async fn get_nuget_base_url(client: &Client, source: Option<&str>) -> Result<Str
     let cfg = read_configs()?;
     let nuget_cfg = &cfg.registry.nuget;
     let source_name = source.unwrap_or(&nuget_cfg.default);
-    let Some(index_url) = nuget_cfg.source.get(source_name) else {
+    let Some(src) = nuget_cfg.sources.get(source_name) else {
         return Err(anyhow!("unknown nuget source {:?}", source_name));
     };
+    let index_url = &src.url;
     let response = client.get(index_url).send().await;
     let Ok(resp) = response else {
         return Ok(OFFICIAL_FLAT.to_string());

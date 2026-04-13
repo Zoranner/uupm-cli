@@ -1,7 +1,7 @@
-use crate::config::{default_origin_registry_url, read_configs};
+use crate::config::{resolve_origin_registry, read_configs};
 use crate::manifest::{
     dependencies_string_map, load_manifest_value, save_manifest_pretty,
-    scoped_registries_from_value, RegistryPackageBody, ScopedRegistry, MANIFEST_PATH,
+    scoped_registries_from_value, RegistryPackageBody, MANIFEST_PATH,
 };
 use crate::spinner::{step_spinner, SpinnerSuccess};
 use anyhow::{Context, Result};
@@ -51,7 +51,6 @@ struct UnityBuiltinPackageJson {
 
 pub async fn freeze_packages(client: &Client) -> Result<()> {
     let configs = read_configs()?;
-    let default_registry_url = default_origin_registry_url(&configs)?;
     let editor_path = select_unity_version(&configs)?;
 
     if !Path::new(MANIFEST_PATH).exists() {
@@ -64,7 +63,15 @@ pub async fn freeze_packages(client: &Client) -> Result<()> {
     let scoped = scoped_registries_from_value(&manifest_v);
 
     while let Some((package_name, package_version)) = package_map.pop_first() {
-        let registry_url = match_registry_url(&package_name, &scoped, &default_registry_url);
+        // manifest scopedRegistries 优先，fallback 到 ~/.upmrc.toml
+        let registry_url = if let Some(reg) = scoped.iter().find(|r| {
+            r.scopes.iter().any(|s| package_name.starts_with(s.as_str()))
+        }) {
+            reg.url.trim_end_matches('/').to_string()
+        } else {
+            let (_, src) = resolve_origin_registry(&package_name, &configs)?;
+            src.url.trim_end_matches('/').to_string()
+        };
         let c = client.clone();
         let ep = editor_path.clone();
         let outcome = step_spinner("Freezing unity package...", async move {
@@ -106,15 +113,15 @@ fn apply_patch(
 }
 
 fn select_unity_version(configs: &crate::config::GlobalConfig) -> Result<String> {
-    let keys: Vec<String> = configs.editor.version.keys().cloned().collect();
+    let keys: Vec<String> = configs.editor.versions.keys().cloned().collect();
     if keys.is_empty() {
-        anyhow::bail!("no Unity editors in ~/.upmrc; run `uupm editor scan` or `uupm editor add`");
+        anyhow::bail!("no Unity editors in ~/.upmrc.toml; run `uupm editor scan` or `uupm editor add`");
     }
     // 只有一个版本时直接使用，无需交互
     if keys.len() == 1 {
         return configs
             .editor
-            .version
+            .versions
             .get(&keys[0])
             .cloned()
             .context("selected editor path missing");
@@ -127,21 +134,10 @@ fn select_unity_version(configs: &crate::config::GlobalConfig) -> Result<String>
         .interact()?;
     configs
         .editor
-        .version
+        .versions
         .get(&keys[sel])
         .cloned()
         .context("selected editor path missing")
-}
-
-fn match_registry_url(package_name: &str, scoped: &[ScopedRegistry], default: &str) -> String {
-    for reg in scoped {
-        for scope in &reg.scopes {
-            if package_name.starts_with(scope) {
-                return reg.url.trim_end_matches('/').to_string();
-            }
-        }
-    }
-    default.trim_end_matches('/').to_string()
 }
 
 async fn freeze_single(

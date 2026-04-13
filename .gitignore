@@ -12,6 +12,8 @@ Thumbs.db
 
 # IDE (personal local settings; remove these lines if you commit shared configs)
 .idea/
+.claude/
 *.swp
 *.swo
 .refs/
+Packages/

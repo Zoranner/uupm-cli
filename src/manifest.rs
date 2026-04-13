@@ -65,6 +65,44 @@ pub fn dependencies_string_map(v: &Value) -> BTreeMap<String, String> {
     m
 }
 
+pub fn upsert_scoped_registry(
+    manifest_v: &mut Value,
+    name: &str,
+    url: &str,
+    scope: &str,
+) -> Result<()> {
+    let root = manifest_v
+        .as_object_mut()
+        .context("manifest root must be a JSON object")?;
+    let arr = root
+        .entry("scopedRegistries")
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+        .context("scopedRegistries must be an array")?;
+
+    // 已有相同 URL 的条目 → 只追加 scope（如果还没有）
+    for entry in arr.iter_mut() {
+        if entry.get("url").and_then(|u| u.as_str()) == Some(url) {
+            let scopes = entry
+                .get_mut("scopes")
+                .and_then(|s| s.as_array_mut())
+                .context("scopedRegistries[].scopes must be an array")?;
+            if !scopes.iter().any(|s| s.as_str() == Some(scope)) {
+                scopes.push(json!(scope));
+            }
+            return Ok(());
+        }
+    }
+
+    // 没有 → 新增条目
+    arr.push(json!({
+        "name": name,
+        "url": url,
+        "scopes": [scope]
+    }));
+    Ok(())
+}
+
 pub fn scoped_registries_from_value(v: &Value) -> Vec<ScopedRegistry> {
     let Some(arr) = v.get("scopedRegistries").and_then(|x| x.as_array()) else {
         return Vec::new();

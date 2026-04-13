@@ -11,8 +11,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use config::{
     add_editor, add_registry, list_editors, list_registries, remove_editor, remove_registry,
-    scan_and_merge_editors, set_default_editor, set_default_nuget_registry,
-    set_default_origin_registry, RegistryKind,
+    scan_and_merge_editors, set_default_editor, set_default_registry, RegistryKind,
 };
 use reqwest::Client;
 
@@ -57,6 +56,9 @@ enum RegistryCli {
         url: String,
         #[arg(long, short = 'n')]
         nuget: bool,
+        /// Scope prefixes this registry handles, e.g. --scopes com.unity --scopes com.myco
+        #[arg(long, num_args = 0..)]
+        scopes: Vec<String>,
     },
     /// Remove a registry
     #[command(alias = "r")]
@@ -137,13 +139,13 @@ async fn main() -> Result<()> {
             println!("Freeze finished!");
         }
         Some(Commands::Registry(sub)) => match sub {
-            RegistryCli::Add { name, url, nuget } => {
+            RegistryCli::Add { name, url, nuget, scopes } => {
                 let kind = if nuget {
                     RegistryKind::Nuget
                 } else {
                     RegistryKind::Origin
                 };
-                add_registry(&name, &url, kind)?;
+                add_registry(&name, &url, scopes, kind)?;
             }
             RegistryCli::Remove { name, nuget } => {
                 let kind = if nuget {
@@ -162,11 +164,12 @@ async fn main() -> Result<()> {
                 list_registries(kind)?;
             }
             RegistryCli::Default { name, nuget } => {
-                if nuget {
-                    set_default_nuget_registry(&name)?;
+                let kind = if nuget {
+                    RegistryKind::Nuget
                 } else {
-                    set_default_origin_registry(&name)?;
-                }
+                    RegistryKind::Origin
+                };
+                set_default_registry(&name, kind)?;
             }
         },
         Some(Commands::Editor(sub)) => match sub {
