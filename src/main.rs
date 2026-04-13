@@ -3,6 +3,7 @@ mod freeze;
 mod manifest;
 mod meta;
 mod nuget;
+mod remove;
 mod spinner;
 mod upm;
 mod versions;
@@ -36,6 +37,9 @@ enum Commands {
         /// NuGet source name from ~/.upmrc (optional)
         source: Option<String>,
     },
+    /// Remove a package from manifest and clean up local artifacts
+    #[command(alias = "rm")]
+    Remove { name: String },
     /// Freeze manifest dependencies to local tarballs / embedded packages
     #[command(alias = "f")]
     Freeze,
@@ -132,6 +136,9 @@ async fn main() -> Result<()> {
                 upm::install_upm_package(&client, &name, embed).await?;
                 println!("Install finished!");
             }
+        }
+        Some(Commands::Remove { name }) => {
+            remove::remove_package(&name)?;
         }
         Some(Commands::Freeze) => {
             println!("Freezing project packages...");
