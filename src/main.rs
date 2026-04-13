@@ -4,17 +4,19 @@ mod freeze;
 mod manifest;
 mod meta;
 mod nuget;
+mod publish;
 mod remove;
 mod spinner;
 mod upgrade;
 mod upm;
 mod versions;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 use config::{
     add_editor, add_registry, list_editors, list_registries, remove_editor, remove_registry,
-    scan_and_merge_editors, set_default_editor, set_default_registry, RegistryKind,
+    scan_and_merge_editors, set_default_editor, set_default_registry, set_origin_registry_token,
+    RegistryKind,
 };
 use manifest::{dependencies_string_map, load_manifest_value, MANIFEST_PATH};
 use reqwest::Client;
@@ -68,6 +70,16 @@ enum Commands {
         #[arg(long, default_value = "0.1.0")]
         version: String,
     },
+    /// Publish the package in the given directory to a UPM registry
+    #[command(alias = "p")]
+    Publish {
+        /// Path to the package directory (default: current directory)
+        #[arg(default_value = ".")]
+        dir: String,
+        /// Registry name from ~/.upmrc (defaults to scope-matched registry)
+        #[arg(long, short = 'r')]
+        registry: Option<String>,
+    },
     /// Freeze manifest dependencies to local tarballs / embedded packages
     #[command(alias = "f")]
     Freeze,
@@ -91,6 +103,9 @@ enum RegistryCli {
         /// Scope prefixes this registry handles, e.g. --scopes com.unity --scopes com.myco
         #[arg(long, num_args = 0..)]
         scopes: Vec<String>,
+        /// Bearer token for this Unity registry (publish / authenticated APIs); not used with -n
+        #[arg(long)]
+        token: Option<String>,
     },
     /// Remove a registry
     #[command(alias = "r")]
@@ -110,6 +125,14 @@ enum RegistryCli {
         name: String,
         #[arg(long, short = 'n')]
         nuget: bool,
+    },
+    /// Set or clear Bearer token on a Unity registry
+    Token {
+        name: String,
+        #[arg(long)]
+        token: Option<String>,
+        #[arg(long, conflicts_with = "token")]
+        clear: bool,
     },
 }
 
@@ -183,6 +206,9 @@ async fn main() -> Result<()> {
         }) => {
             create::create_package(&name, display_name.as_deref(), author.as_deref(), &version)?;
         }
+        Some(Commands::Publish { dir, registry }) => {
+            publish::publish_package(&client, &dir, registry.as_deref()).await?;
+        }
         Some(Commands::Freeze) => {
             println!("Freezing project packages...");
             freeze::freeze_packages(&client).await?;
@@ -194,13 +220,14 @@ async fn main() -> Result<()> {
                 url,
                 nuget,
                 scopes,
+                token,
             } => {
                 let kind = if nuget {
                     RegistryKind::Nuget
                 } else {
                     RegistryKind::Origin
                 };
-                add_registry(&name, &url, scopes, kind)?;
+                add_registry(&name, &url, scopes, kind, token.as_deref())?;
             }
             RegistryCli::Remove { name, nuget } => {
                 let kind = if nuget {
@@ -225,6 +252,15 @@ async fn main() -> Result<()> {
                     RegistryKind::Origin
                 };
                 set_default_registry(&name, kind)?;
+            }
+            RegistryCli::Token { name, token, clear } => {
+                if clear {
+                    set_origin_registry_token(&name, None)?;
+                } else if let Some(t) = token {
+                    set_origin_registry_token(&name, Some(t.as_str()))?;
+                } else {
+                    bail!("specify --token <value> or --clear");
+                }
             }
         },
         Some(Commands::Editor(sub)) => match sub {

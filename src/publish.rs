@@ -1,0 +1,198 @@
+use crate::config::{read_configs, resolve_origin_registry};
+use anyhow::{bail, Context, Result};
+use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use flate2::{write::GzEncoder, Compression};
+use reqwest::Client;
+use serde_json::{json, Value};
+use std::fs;
+use std::io::Write;
+use std::num::Wrapping;
+use std::path::Path;
+
+pub async fn publish_package(client: &Client, dir: &str, registry: Option<&str>) -> Result<()> {
+    let pkg_dir = Path::new(dir);
+    let pkg_json_path = pkg_dir.join("package.json");
+    if !pkg_json_path.exists() {
+        bail!("no package.json found in {:?}", dir);
+    }
+
+    let pkg_raw = fs::read_to_string(&pkg_json_path)
+        .with_context(|| format!("read {}", pkg_json_path.display()))?;
+    let pkg: Value = serde_json::from_str(&pkg_raw).context("parse package.json")?;
+
+    let name = pkg
+        .get("name")
+        .and_then(|v| v.as_str())
+        .context("package.json missing \"name\"")?;
+    let version = pkg
+        .get("version")
+        .and_then(|v| v.as_str())
+        .context("package.json missing \"version\"")?;
+
+    // 解析目标注册表
+    let configs = read_configs()?;
+    let (reg_name, reg_src) = if let Some(r) = registry {
+        let src = configs
+            .registry
+            .origin
+            .sources
+            .get(r)
+            .with_context(|| format!("unknown registry {:?}", r))?;
+        (r.to_string(), src.clone())
+    } else {
+        let (n, s) = resolve_origin_registry(name, &configs)?;
+        (n.to_string(), s.clone())
+    };
+    let registry_url = reg_src.url.trim_end_matches('/');
+
+    println!("Publishing {name}@{version} to {reg_name} ({registry_url})…");
+
+    // 打 tarball（npm 约定：目录内容放在 package/ 前缀下）
+    let tarball_bytes = build_tarball(pkg_dir)?;
+    let tarball_b64 = B64.encode(&tarball_bytes);
+    let shasum = sha1(&tarball_bytes);
+    let tarball_name = format!("{name}-{version}.tgz");
+
+    // npm publish PUT body
+    let body = json!({
+        "_id": name,
+        "name": name,
+        "description": pkg.get("description").and_then(|v| v.as_str()).unwrap_or(""),
+        "dist-tags": { "latest": version },
+        "versions": {
+            version: {
+                "name": name,
+                "version": version,
+                "description": pkg.get("description").and_then(|v| v.as_str()).unwrap_or(""),
+                "main": pkg.get("main").and_then(|v| v.as_str()).unwrap_or(""),
+                "unity": pkg.get("unity").and_then(|v| v.as_str()).unwrap_or("2021.3"),
+                "author": pkg.get("author").cloned().unwrap_or(json!({})),
+                "license": pkg.get("license").and_then(|v| v.as_str()).unwrap_or("MIT"),
+                "dependencies": pkg.get("dependencies").cloned().unwrap_or(json!({})),
+                "dist": {
+                    "shasum": shasum,
+                    "tarball": format!("{registry_url}/{name}/-/{tarball_name}"),
+                }
+            }
+        },
+        "_attachments": {
+            tarball_name: {
+                "content_type": "application/octet-stream",
+                "data": tarball_b64,
+                "length": tarball_bytes.len(),
+            }
+        }
+    });
+
+    let url = format!("{registry_url}/{}", urlencoded_name(name));
+    let mut req = client.put(&url).json(&body);
+    if let Some(token) = &reg_src.token {
+        req = req.bearer_auth(token);
+    }
+    let resp = req
+        .send()
+        .await
+        .with_context(|| format!("PUT {url}"))?
+        .error_for_status()
+        .with_context(|| format!("registry rejected publish for {name}@{version}"))?;
+
+    let status = resp.status();
+    println!("Published {name}@{version}  (HTTP {})", status.as_u16());
+    Ok(())
+}
+
+/// Build an in-memory .tgz with all files under `dir/` placed under `package/` prefix.
+fn build_tarball(dir: &Path) -> Result<Vec<u8>> {
+    let buf = Vec::new();
+    let enc = GzEncoder::new(buf, Compression::default());
+    let mut tar = tar::Builder::new(enc);
+    tar.follow_symlinks(false);
+    append_dir_recursive(&mut tar, dir, dir, "package")?;
+    let gz = tar.into_inner().context("finalize tar")?;
+    gz.finish().context("finalize gzip")
+}
+
+fn append_dir_recursive<W: Write>(
+    tar: &mut tar::Builder<W>,
+    base: &Path,
+    current: &Path,
+    prefix: &str,
+) -> Result<()> {
+    for entry in fs::read_dir(current)? {
+        let entry = entry?;
+        let path = entry.path();
+        let rel = path.strip_prefix(base).unwrap();
+        let tar_path = format!("{prefix}/{}", rel.to_string_lossy().replace('\\', "/"));
+        if path.is_dir() {
+            append_dir_recursive(tar, base, &path, prefix)?;
+        } else {
+            let mut file =
+                fs::File::open(&path).with_context(|| format!("open {}", path.display()))?;
+            tar.append_file(&tar_path, &mut file)
+                .with_context(|| format!("tar append {}", path.display()))?;
+        }
+    }
+    Ok(())
+}
+
+fn sha1(data: &[u8]) -> String {
+    // SHA-1 per FIPS 180-4
+    let mut h: [Wrapping<u32>; 5] = [
+        Wrapping(0x67452301),
+        Wrapping(0xEFCDAB89),
+        Wrapping(0x98BADCFE),
+        Wrapping(0x10325476),
+        Wrapping(0xC3D2E1F0),
+    ];
+
+    let bit_len = (data.len() as u64) * 8;
+    let mut msg = data.to_vec();
+    msg.push(0x80);
+    while msg.len() % 64 != 56 {
+        msg.push(0x00);
+    }
+    msg.extend_from_slice(&bit_len.to_be_bytes());
+
+    for chunk in msg.chunks(64) {
+        let mut w = [Wrapping(0u32); 80];
+        for i in 0..16 {
+            w[i] = Wrapping(u32::from_be_bytes(
+                chunk[i * 4..i * 4 + 4].try_into().unwrap(),
+            ));
+        }
+        for i in 16..80 {
+            let v = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
+            w[i] = Wrapping(v.0.rotate_left(1));
+        }
+        let [mut a, mut b, mut c, mut d, mut e] = h;
+        for (i, wi) in w.iter().enumerate() {
+            let (f, k) = match i {
+                0..=19 => ((b & c) | (!b & d), Wrapping(0x5A827999u32)),
+                20..=39 => (b ^ c ^ d, Wrapping(0x6ED9EBA1u32)),
+                40..=59 => ((b & c) | (b & d) | (c & d), Wrapping(0x8F1BBCDCu32)),
+                _ => (b ^ c ^ d, Wrapping(0xCA62C1D6u32)),
+            };
+            let temp = Wrapping(a.0.rotate_left(5)) + f + e + k + *wi;
+            e = d;
+            d = c;
+            c = Wrapping(b.0.rotate_left(30));
+            b = a;
+            a = temp;
+        }
+        h[0] += a;
+        h[1] += b;
+        h[2] += c;
+        h[3] += d;
+        h[4] += e;
+    }
+
+    format!(
+        "{:08x}{:08x}{:08x}{:08x}{:08x}",
+        h[0].0, h[1].0, h[2].0, h[3].0, h[4].0
+    )
+}
+
+/// npm scoped packages use `@scope%2Fname` in the URL path.
+fn urlencoded_name(name: &str) -> String {
+    name.replace('/', "%2F")
+}

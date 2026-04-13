@@ -34,6 +34,9 @@ pub struct OriginSource {
     /// Scope prefixes this registry handles. Empty = default/catch-all.
     #[serde(default)]
     pub scopes: Vec<String>,
+    /// Bearer token for authenticated operations (e.g. publish).
+    #[serde(default)]
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,6 +226,7 @@ pub fn init_configs() -> Result<GlobalConfig> {
         OriginSource {
             url: "https://packages.unity.com".to_string(),
             scopes: vec![],
+            token: None,
         },
     );
 
@@ -262,7 +266,13 @@ pub enum RegistryKind {
     Nuget,
 }
 
-pub fn add_registry(name: &str, url: &str, scopes: Vec<String>, kind: RegistryKind) -> Result<()> {
+pub fn add_registry(
+    name: &str,
+    url: &str,
+    scopes: Vec<String>,
+    kind: RegistryKind,
+    token: Option<&str>,
+) -> Result<()> {
     let mut c = read_configs()?;
     match kind {
         RegistryKind::Origin => {
@@ -271,10 +281,14 @@ pub fn add_registry(name: &str, url: &str, scopes: Vec<String>, kind: RegistryKi
                 OriginSource {
                     url: url.to_string(),
                     scopes,
+                    token: token.map(String::from),
                 },
             );
         }
         RegistryKind::Nuget => {
+            if token.is_some() {
+                bail!("--token applies only to Unity registries (omit -n)");
+            }
             c.registry.nuget.sources.insert(
                 name.to_string(),
                 NugetSource {
@@ -283,6 +297,19 @@ pub fn add_registry(name: &str, url: &str, scopes: Vec<String>, kind: RegistryKi
             );
         }
     }
+    write_configs(&c)?;
+    Ok(())
+}
+
+pub fn set_origin_registry_token(name: &str, token: Option<&str>) -> Result<()> {
+    let mut c = read_configs()?;
+    let src = c
+        .registry
+        .origin
+        .sources
+        .get_mut(name)
+        .with_context(|| format!("unknown origin registry {:?}", name))?;
+    src.token = token.map(String::from);
     write_configs(&c)?;
     Ok(())
 }

@@ -77,6 +77,41 @@ uupm registry add NugetOrg https://api.nuget.org/v3/index.json -n
 uupm registry default NugetOrg -n
 ```
 
+私有 Unity 注册表可配置 Bearer 令牌（可选，例如用于发布）：
+
+```bash
+uupm registry token CustomUPM --token YOUR_TOKEN
+uupm registry token CustomUPM --clear
+# 或在添加注册表时：
+uupm registry add CustomUPM https://registry.example.com/npm --token YOUR_TOKEN
+```
+
+### 将 Unity 包发布到注册表
+
+在包目录下执行（需存在 `package.json`）：
+
+```bash
+uupm publish
+uupm p ./path/to/com.vendor.mypkg -r CustomUPM
+```
+
+省略 `-r` 时，会按与安装相同的 scope 规则从 `~/.upmrc` 选择注册表。请求体为 npm 兼容的 PUT，并附带 `package/` 前缀的 tarball；若服务端需要鉴权，请为该注册表配置 `token`。
+
+### 创建包脚手架
+
+```bash
+uupm create com.vendor.mypkg --display-name "My Package" --author "You" --version 0.1.0
+```
+
+### 列出、升级或移除清单依赖
+
+```bash
+uupm list
+uupm upgrade
+uupm upgrade com.vendor.mypkg
+uupm remove com.vendor.mypkg
+```
+
 ### 管理 Unity 编辑器路径
 
 ```bash
@@ -93,6 +128,11 @@ uupm editor add 2022.3.16f1 "C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.16f1"
 | 命令 | 别名 | 说明 |
 |------|------|------|
 | `install` | `i` | 从 Unity 注册表或 NuGet 安装 |
+| `remove` | `rm` | 从清单移除包并清理本地制品 |
+| `list` | `ls` | 列出 `Packages/manifest.json` 中的依赖 |
+| `upgrade` | `up` | 将注册表依赖升级到最新版本 |
+| `create` | `c` | 创建 Unity 包脚手架 |
+| `publish` | `p` | 将包目录发布到 Unity 注册表 |
 | `freeze` | `f` | 将清单依赖冻结为本地制品 |
 | `registry` | `r` | 管理包注册表 |
 | `editor` | `e` | 管理 Unity 编辑器路径 |
@@ -115,10 +155,11 @@ uupm install <name> [source]
 
 | 子命令 | 别名 | 说明 |
 |--------|------|------|
-| `add <name> <url>` | `a` | 添加注册表 |
+| `add <name> <url>` | `a` | 添加注册表（Unity 源可用 `--token`；路由可用 `--scopes`） |
 | `remove <name>` | `r` | 删除注册表 |
 | `list` | `l` | 列出注册表 |
 | `default <name>` | - | 设置默认注册表 |
+| `token <name>` | - | 为 Unity 注册表设置 `--token` 或 `--clear` |
 
 追加 `-n` 可操作 NuGet 注册表；省略时操作 Unity 注册表。
 
@@ -138,29 +179,25 @@ UUPM 的用户级配置文件位于 `~/.upmrc`。
 
 | 配置段 | 作用 |
 |--------|------|
-| `registry.origin` | Unity 注册表名称、地址与默认源 |
+| `registry.origin` | Unity 注册表名称、地址、各源可选 `token`、scope 与默认源 |
 | `registry.nuget` | NuGet 源名称、索引地址与默认源 |
 | `editor.version` | Unity 版本键与安装路径映射 |
 | `editor.default` | 冻结依赖等流程使用的默认编辑器键 |
 
-首次使用时会自动创建该文件。在 Windows 上，`uupm editor scan` 可用于填充常见 Unity 安装路径。
+首次使用时会自动创建该文件。在 Windows 上，`uupm editor scan` 可用于填充常见 Unity 安装路径。也可直接编辑各 origin 源下的 `token`；请勿将密钥提交到版本库。
 
 ## 当前范围
 
-- 管理 Unity 与 NuGet 注册表
-- 安装 Unity 注册表包
-- 将 Unity 注册表包嵌入为本地 `.tgz`
+- 管理 Unity 与 NuGet 注册表（含 Unity 源可选 Bearer 令牌）
+- 安装 Unity 注册表包，并支持嵌入为本地 `.tgz`
 - 将 NuGet 包安装为 Unity 包目录
+- 列出、升级、移除清单依赖
+- 创建 Unity 包脚手架
+- 向 npm 兼容的 Unity 注册表发布包
 - 冻结清单依赖为本地制品
 - 管理 Unity 编辑器路径与默认值
 
-暂未实现：
-
-- 列出已安装包
-- 升级包
-- 删除包
-- 创建包脚手架
-- 发布包到注册表
+完整子命令与参数请使用 `uupm --help` 与 `uupm <命令> --help` 查看。
 
 ## 许可证
 
