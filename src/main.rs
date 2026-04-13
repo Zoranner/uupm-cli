@@ -1,4 +1,5 @@
 mod config;
+mod create;
 mod freeze;
 mod manifest;
 mod meta;
@@ -51,6 +52,21 @@ enum Commands {
     Upgrade {
         /// Package name to upgrade; omit to upgrade all
         name: Option<String>,
+    },
+    /// Create a new Unity package scaffold in the current directory
+    #[command(alias = "c")]
+    Create {
+        /// Reverse-domain package name, e.g. com.vendor.mylib
+        name: String,
+        /// Display name (defaults to last segment, title-cased)
+        #[arg(long)]
+        display_name: Option<String>,
+        /// Author name
+        #[arg(long)]
+        author: Option<String>,
+        /// Initial version (default: 0.1.0)
+        #[arg(long, default_value = "0.1.0")]
+        version: String,
     },
     /// Freeze manifest dependencies to local tarballs / embedded packages
     #[command(alias = "f")]
@@ -158,6 +174,14 @@ async fn main() -> Result<()> {
         Some(Commands::Upgrade { name }) => {
             upgrade::upgrade_packages(&client, name.as_deref()).await?;
             println!("Upgrade finished!");
+        }
+        Some(Commands::Create {
+            name,
+            display_name,
+            author,
+            version,
+        }) => {
+            create::create_package(&name, display_name.as_deref(), author.as_deref(), &version)?;
         }
         Some(Commands::Freeze) => {
             println!("Freezing project packages...");
