@@ -5,7 +5,7 @@ use crate::versions::pick_latest_stable;
 use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
 use serde_json::{json, Map, Value};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -31,11 +31,16 @@ pub async fn install_nuget_package(
     source: Option<&str>,
 ) -> Result<()> {
     let mut queue = VecDeque::new();
+    let mut installed: HashSet<String> = HashSet::new();
     queue.push_back(name.to_string());
     let meta_manager = MetaTemplateManager::new()?;
     while let Some(spec) = queue.pop_front() {
+        if installed.contains(&spec) {
+            continue;
+        }
+        installed.insert(spec.clone());
         println!("\n> {}", spec);
-        resolve_one(client, &meta_manager, &spec, source, true, &mut queue).await?;
+        resolve_one(client, &meta_manager, &spec, source, true, &mut queue, &installed).await?;
     }
     Ok(())
 }
@@ -47,6 +52,7 @@ async fn resolve_one(
     source: Option<&str>,
     recurse: bool,
     queue: &mut VecDeque<String>,
+    installed: &HashSet<String>,
 ) -> Result<()> {
     let parts: Vec<&str> = spec.split('@').collect();
     let pascal_name = parts[0].trim();
@@ -89,29 +95,13 @@ async fn resolve_one(
         pick_latest_stable(&version_strings)?
     };
 
-    let found_msg = format!("The version {target_version} of {pascal_name} found.");
-    step_spinner("Looking for nuget package...", async move { Ok(found_msg) }).await?;
+    println!("Found: {pascal_name}@{target_version}");
 
     let unity_pkg_path =
         Path::new(PACKAGES_PATH).join(format!("{unity_pkg_name}-{target_version}"));
 
-    let c = client.clone();
-    let kn = kebab_name.clone();
-    let tv_dl = target_version.clone();
-    let nb = nuget_base_url.clone();
-    let dest = nuget_pkg_path.clone();
-    step_spinner("Downloading nuget package...", async move {
-        let url = format!("{nb}{kn}/{tv_dl}/{kn}.{tv_dl}.nupkg");
-        let bytes = c
-            .get(&url)
-            .send()
-            .await?
-            .error_for_status()?
-            .bytes()
-            .await?;
-        fs::create_dir_all(PACKAGES_PATH)?;
-        fs::write(&dest, &bytes)?;
-        Ok(format!("Download {kn}@{tv_dl} complete."))
+    step_spinner("Downloading nuget package...", async {
+        download_nupkg(client, &nuget_base_url, &kebab_name, &target_version, &nuget_pkg_path).await
     })
     .await?;
 
@@ -121,49 +111,66 @@ async fn resolve_one(
     if recurse {
         for (id, ver) in &parsed.dependencies {
             let dep_spec = format!("{id}@{ver}");
-            if !queue.iter().any(|x| x == &dep_spec) {
+            if !installed.contains(&dep_spec) && !queue.iter().any(|x| x == &dep_spec) {
                 queue.push_back(dep_spec);
             }
         }
     }
 
-    let up_path_conv = unity_pkg_path.clone();
-    let upn = unity_pkg_name.clone();
-    let tv_conv = target_version.clone();
-    let pn = pascal_name.to_string();
-    let parsed_conv = parsed.clone();
-    step_spinner("Converting package info...", async move {
-        if up_path_conv.exists() {
-            fs::remove_dir_all(&up_path_conv)?;
-        }
-        fs::create_dir_all(&up_path_conv)?;
-        write_package_json(&up_path_conv, &upn, &pn, &tv_conv, &parsed_conv)?;
-        Ok("Converted package info to package.json.".to_string())
+    step_spinner("Converting package info...", async {
+        convert_package_info(&unity_pkg_path, &unity_pkg_name, pascal_name, &target_version, &parsed)
     })
     .await?;
 
-    let dest_nupkg = nuget_pkg_path.clone();
-    let up_path_ex = unity_pkg_path.clone();
-    let tf = parsed.target_framework.clone();
-    let upn_ex = unity_pkg_name.clone();
-    let tv_ex = target_version.clone();
-    step_spinner("Extracting package to local...", async move {
-        extract_specific_files(&dest_nupkg, &up_path_ex, &tf)?;
-        let _ = fs::remove_file(&dest_nupkg);
-        Ok(format!("Extracted to {upn_ex}@{tv_ex}."))
+    step_spinner("Extracting package to local...", async {
+        extract_specific_files(&nuget_pkg_path, &unity_pkg_path, &parsed.target_framework)?;
+        let _ = fs::remove_file(&nuget_pkg_path);
+        Ok(format!("Extracted to {unity_pkg_name}@{target_version}."))
     })
     .await?;
 
-    let mm = meta_manager.clone();
-    let up_path_meta = unity_pkg_path.clone();
-    let upid = unity_pkg_name.clone();
-    step_spinner("Generating meta files...", async move {
-        generate_meta_files(&mm, &upid, &up_path_meta)?;
-        Ok(format!("Generated meta files for {upid}."))
+    step_spinner("Generating meta files...", async {
+        generate_meta_files(meta_manager, &unity_pkg_name, &unity_pkg_path)?;
+        Ok(format!("Generated meta files for {unity_pkg_name}."))
     })
     .await?;
 
     Ok(())
+}
+
+async fn download_nupkg(
+    client: &Client,
+    base_url: &str,
+    kebab_name: &str,
+    version: &str,
+    dest: &Path,
+) -> Result<String> {
+    let url = format!("{base_url}{kebab_name}/{version}/{kebab_name}.{version}.nupkg");
+    let bytes = client
+        .get(&url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
+    fs::create_dir_all(PACKAGES_PATH)?;
+    fs::write(dest, &bytes)?;
+    Ok(format!("Download {kebab_name}@{version} complete."))
+}
+
+fn convert_package_info(
+    unity_pkg_path: &Path,
+    unity_pkg_name: &str,
+    pascal_name: &str,
+    version: &str,
+    parsed: &ParsedNuspec,
+) -> Result<String> {
+    if unity_pkg_path.exists() {
+        fs::remove_dir_all(unity_pkg_path)?;
+    }
+    fs::create_dir_all(unity_pkg_path)?;
+    write_package_json(unity_pkg_path, unity_pkg_name, pascal_name, version, parsed)?;
+    Ok("Converted package info to package.json.".to_string())
 }
 
 async fn get_nuget_base_url(client: &Client, source: Option<&str>) -> Result<String> {
@@ -271,7 +278,7 @@ fn parse_nuspec(xml: &str, _kebab_name: &str) -> Result<ParsedNuspec> {
         return Err(anyhow!("The library does not support Unity."));
     }
     netstd.sort_by(|a, b| b.0.cmp(&a.0));
-    let (target_framework, dependencies) = netstd.into_iter().next().unwrap();
+    let (target_framework, dependencies) = netstd.into_iter().next().expect("netstd non-empty");
 
     let mut dependencies_map = BTreeMap::new();
     for (id, ver) in &dependencies {
@@ -306,8 +313,7 @@ fn write_package_json(
         "version": version,
         "unity": "2021.3",
         "author": {
-            "name": "NuGet",
-            "email": "rd@kimo-tech.com"
+            "name": "NuGet"
         },
         "description": parsed.description,
         "type": "library",

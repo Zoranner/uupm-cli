@@ -10,7 +10,12 @@ pub fn pick_latest_stable(versions: &[String]) -> Result<String> {
         .iter()
         .filter(|v| {
             let l = v.to_lowercase();
-            !l.contains("-preview") && !l.contains("-beta") && !l.contains("-rc")
+            !l.contains("-preview")
+                && !l.contains("-beta")
+                && !l.contains("-rc")
+                && !l.contains("-exp")
+                && !l.contains("-pre")
+                && !l.contains("-alpha")
         })
         .collect();
     let pool: Vec<&String> = if filtered.is_empty() {

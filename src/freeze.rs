@@ -63,33 +63,24 @@ pub async fn freeze_packages(client: &Client) -> Result<()> {
     let mut package_map = dependencies_string_map(&manifest_v);
     let scoped = scoped_registries_from_value(&manifest_v);
 
-    while !package_map.is_empty() {
-        let (package_name, package_version) = package_map
-            .iter()
-            .next()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .unwrap();
-        package_map.remove(&package_name);
-
+    while let Some((package_name, package_version)) = package_map.pop_first() {
         let registry_url = match_registry_url(&package_name, &scoped, &default_registry_url);
-
-        let ep = editor_path.clone();
-        let pn = package_name.clone();
-        let pv = package_version.clone();
-        let ru = registry_url.clone();
         let c = client.clone();
+        let ep = editor_path.clone();
         let outcome = step_spinner("Freezing unity package...", async move {
-            freeze_single(&c, &ep, &pn, &pv, &ru).await
+            freeze_single(&c, &ep, &package_name, &package_version, &registry_url).await
         })
         .await?;
         apply_patch(&mut manifest_v, &mut package_map, outcome.patch);
     }
 
+    // 先写到临时文件，再备份原始清单，最后 rename，避免中途崩溃丢失数据
+    let tmp_path = "Packages/manifest.tmp.json";
+    save_manifest_pretty(tmp_path, &manifest_v)?;
     if Path::new(MANIFEST_PATH).exists() {
         fs::copy(MANIFEST_PATH, "Packages/manifest.src.json")?;
-        fs::remove_file(MANIFEST_PATH)?;
     }
-    save_manifest_pretty(MANIFEST_PATH, &manifest_v)?;
+    fs::rename(tmp_path, MANIFEST_PATH)?;
     Ok(())
 }
 
@@ -118,6 +109,15 @@ fn select_unity_version(configs: &crate::config::GlobalConfig) -> Result<String>
     let keys: Vec<String> = configs.editor.version.keys().cloned().collect();
     if keys.is_empty() {
         anyhow::bail!("no Unity editors in ~/.upmrc; run `uupm editor scan` or `uupm editor add`");
+    }
+    // 只有一个版本时直接使用，无需交互
+    if keys.len() == 1 {
+        return configs
+            .editor
+            .version
+            .get(&keys[0])
+            .cloned()
+            .context("selected editor path missing");
     }
     let labels: Vec<&str> = keys.iter().map(String::as_str).collect();
     let sel = Select::with_theme(&ColorfulTheme::default())
@@ -192,10 +192,8 @@ fn freeze_builtin(
         });
     }
     let package_content = fs::read_to_string(&package_file)?;
-    let pkg: UnityBuiltinPackageJson =
-        serde_json::from_str(&package_content).unwrap_or(UnityBuiltinPackageJson {
-            dependencies: BTreeMap::new(),
-        });
+    let pkg: UnityBuiltinPackageJson = serde_json::from_str(&package_content)
+        .with_context(|| format!("failed to parse {}", package_file.display()))?;
     let dest = Path::new("Packages").join(format!("{package_name}-{package_version}"));
     copy_dir_all(&package_path, &dest)?;
     let patch = FreezePatch {
@@ -216,61 +214,34 @@ async fn freeze_from_registry(
     registry_url: &str,
 ) -> Result<FreezeOutcome> {
     let package_info_url = format!("{registry_url}/{package_name}");
-    let response = client.get(&package_info_url).send().await;
-    let Ok(resp) = response else {
-        return Ok(FreezeOutcome {
-            msg: format!("Skipped: {package_name}@{package_version}."),
-            patch: FreezePatch::default(),
-        });
-    };
-    if !resp.status().is_success() {
-        return Ok(FreezeOutcome {
-            msg: format!("Skipped: {package_name}@{package_version}."),
-            patch: FreezePatch::default(),
-        });
-    }
-    let body: RegistryPackageBody = match resp.json().await {
-        Ok(b) => b,
-        Err(_) => {
-            return Ok(FreezeOutcome {
-                msg: format!("Skipped: {package_name}@{package_version}."),
-                patch: FreezePatch::default(),
-            });
-        }
-    };
+    let resp = client
+        .get(&package_info_url)
+        .send()
+        .await
+        .with_context(|| format!("network error fetching {package_name}"))?
+        .error_for_status()
+        .with_context(|| format!("registry returned error for {package_name}"))?;
+    let body: RegistryPackageBody = resp
+        .json()
+        .await
+        .with_context(|| format!("failed to parse registry response for {package_name}"))?;
     let Some(version_info) = body.versions.get(package_version) else {
-        return Ok(FreezeOutcome {
-            msg: format!("Skipped: {package_name}@{package_version}."),
-            patch: FreezePatch::default(),
-        });
+        anyhow::bail!(
+            "version {package_version} not found in registry for {package_name}"
+        );
     };
     let tarball_name = format!("{package_name}-{package_version}.tgz");
     let download_url = &version_info.dist.tarball;
-    let bytes = match client.get(download_url).send().await {
-        Ok(r) => match r.error_for_status() {
-            Ok(r) => match r.bytes().await {
-                Ok(b) => b,
-                Err(_) => {
-                    return Ok(FreezeOutcome {
-                        msg: format!("Skipped: {package_name}@{package_version}."),
-                        patch: FreezePatch::default(),
-                    });
-                }
-            },
-            Err(_) => {
-                return Ok(FreezeOutcome {
-                    msg: format!("Skipped: {package_name}@{package_version}."),
-                    patch: FreezePatch::default(),
-                });
-            }
-        },
-        Err(_) => {
-            return Ok(FreezeOutcome {
-                msg: format!("Skipped: {package_name}@{package_version}."),
-                patch: FreezePatch::default(),
-            });
-        }
-    };
+    let bytes = client
+        .get(download_url)
+        .send()
+        .await
+        .with_context(|| format!("network error downloading tarball for {package_name}"))?
+        .error_for_status()
+        .with_context(|| format!("tarball download failed for {package_name}"))?
+        .bytes()
+        .await
+        .with_context(|| format!("failed to read tarball bytes for {package_name}"))?;
     fs::create_dir_all("Packages")?;
     let file_path = Path::new("Packages").join(&tarball_name);
     fs::write(&file_path, &bytes)?;
@@ -296,19 +267,11 @@ fn merge_dependencies(
 
 fn add_to_package_map(map: &mut BTreeMap<String, String>, name: &str, version: &str) {
     if let Some(existing) = map.get(name) {
-        if compare_versions(version, existing) > 0 {
+        if crate::versions::cmp_version_strings(version, existing).is_gt() {
             map.insert(name.to_string(), version.to_string());
         }
     } else {
         map.insert(name.to_string(), version.to_string());
-    }
-}
-
-fn compare_versions(v1: &str, v2: &str) -> i32 {
-    match crate::versions::cmp_version_strings(v1, v2) {
-        std::cmp::Ordering::Less => -1,
-        std::cmp::Ordering::Equal => 0,
-        std::cmp::Ordering::Greater => 1,
     }
 }
 

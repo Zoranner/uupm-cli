@@ -112,7 +112,9 @@ fn analyze_dll(path: &Path) -> DllInfo {
     let Ok(buffer) = fs::read(path) else {
         return default;
     };
-    if buffer.len() < 0x240 {
+    // PE 头最小需要：DOS header(64) + PE offset(4) + COFF header(20) + Optional header magic(2)
+    // 实际读取到 optional_header_offset + clr_header_offset + 8，保守取 256 字节
+    if buffer.len() < 256 {
         return default;
     }
     if read_u16_le(&buffer, 0) != 0x5a4d {

@@ -46,9 +46,7 @@ pub fn read_configs() -> Result<GlobalConfig> {
     match serde_yaml::from_str::<GlobalConfig>(&raw) {
         Ok(c) => Ok(c),
         Err(e) => {
-            eprintln!("warning: invalid .upmrc ({}), using fresh defaults", e);
-            let data = init_configs()?;
-            Ok(data)
+            anyhow::bail!("invalid .upmrc: {}\nFix or delete ~/.upmrc to reset.", e)
         }
     }
 }
@@ -63,10 +61,37 @@ pub fn write_configs(configs: &GlobalConfig) -> Result<()> {
 /// Windows paths aligned with the original Node implementation.
 #[cfg(windows)]
 fn editor_base_dirs() -> Vec<std::path::PathBuf> {
-    [r"C:\Program Files\", r"C:\Program Files\Unity\Hub\Editor\"]
+    // Unity Hub 默认编辑器安装目录，每个子目录为一个版本号
+    [r"C:\Program Files\Unity\Hub\Editor\"]
         .into_iter()
         .map(std::path::PathBuf::from)
         .collect()
+}
+
+/// 扫描 `C:\Program Files\` 下所有以 `Unity ` 开头的目录（手动安装格式：`Unity 2022.3.52f1`）
+#[cfg(windows)]
+fn scan_manual_install_dirs() -> Vec<std::path::PathBuf> {
+    let base = std::path::Path::new(r"C:\Program Files");
+    let Ok(entries) = fs::read_dir(base) else {
+        return vec![];
+    };
+    entries
+        .flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            let name = p.file_name()?.to_str()?;
+            if p.is_dir() && name.starts_with("Unity ") {
+                Some(p)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn scan_manual_install_dirs() -> Vec<std::path::PathBuf> {
+    vec![]
 }
 
 #[cfg(not(windows))]
@@ -86,10 +111,14 @@ fn unity_exe_path(editor_path: &Path) -> std::path::PathBuf {
 
 #[cfg(windows)]
 fn read_unity_product_version(exe: &Path) -> Option<String> {
-    let exe_str = exe.to_string_lossy().replace('\'', "''");
-    let script = format!("(Get-Item '{}').VersionInfo.ProductVersion", exe_str);
+    // 通过环境变量传递路径，彻底避免任何注入风险
     let out = Command::new("powershell")
-        .args(["-NoProfile", "-Command", &script])
+        .args([
+            "-NoProfile",
+            "-Command",
+            "(Get-Item -LiteralPath $env:UNITY_EXE_PATH).VersionInfo.ProductVersion",
+        ])
+        .env("UNITY_EXE_PATH", exe)
         .output()
         .ok()?;
     if !out.status.success() {
@@ -110,6 +139,8 @@ fn read_unity_product_version(_exe: &Path) -> Option<String> {
 
 pub fn scan_editor_versions() -> BTreeMap<String, String> {
     let mut versions = BTreeMap::new();
+
+    // Hub 管理的编辑器：枚举 Hub\Editor\ 下的版本子目录
     for base in editor_base_dirs() {
         if !base.is_dir() {
             continue;
@@ -131,6 +162,18 @@ pub fn scan_editor_versions() -> BTreeMap<String, String> {
             }
         }
     }
+
+    // 手动安装的编辑器：`C:\Program Files\Unity 2022.3.52f1\Editor\Unity.exe`
+    for dir in scan_manual_install_dirs() {
+        let unity_exe = unity_exe_path(&dir);
+        if !unity_exe.is_file() {
+            continue;
+        }
+        if let Some(ver) = read_unity_product_version(&unity_exe) {
+            versions.insert(ver, dir.to_string_lossy().to_string());
+        }
+    }
+
     versions
 }
 
