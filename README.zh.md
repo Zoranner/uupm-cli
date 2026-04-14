@@ -203,6 +203,12 @@ UUPM 的用户级配置文件位于 `~/.upmrc`。
 
 首次使用时会自动创建该文件。在 Windows 上，`uupm editor scan` 可用于填充常见 Unity 安装路径。也可直接编辑各 origin 源下的 `token`；请勿将密钥提交到版本库。
 
+## Unity 清单里的版本写法
+
+工程的 `Packages/manifest.json` 与各包的 `package.json` 中，对**注册表**依赖应使用 **普通 SemVer 字符串**（如 `1.2.3`、`1.0.0-preview.1`），**不是** npm 的区间运算符（`^`、`~`、`>=`、`*`、`||` 等）。具体解析由 Unity 的 `resolutionStrategy`、锁文件等机制完成，而不是在 JSON 里写 npm 式区间。
+
+UUPM 在非嵌入安装时会写入**精确**版本。`upgrade` 会跳过疑似 npm 区间的项；`freeze` 会直接报错提示修改清单。`list` 会将可疑依赖标为 `non-unity range?`。
+
 ## 当前范围
 
 - 管理 Unity 与 NuGet 注册表（含 Unity 源可选 Bearer 令牌）

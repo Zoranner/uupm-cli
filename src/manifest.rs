@@ -52,6 +52,34 @@ pub fn empty_manifest_object() -> Value {
     })
 }
 
+/// Returns true if `dependencies` value looks like an **npm-style range** (`^`, `~`, `>=`, `*`, `||`, …).
+///
+/// Unity [project](https://docs.unity3d.com/6000.4/Documentation/Manual/upm-manifestPrj.html) and
+/// [package](https://docs.unity3d.com/6000.4/Documentation/Manual/upm-manifestPkg.html) manifests
+/// expect plain SemVer strings for registry packages (no npm range operators). `file:`, `git:`, and
+/// `https://` sources are not checked here.
+pub fn looks_like_npm_style_version_range(version_field: &str) -> bool {
+    let s = version_field.trim();
+    if s.starts_with("file:") || s.starts_with("git:") || s.starts_with("https://") {
+        return false;
+    }
+    if s.starts_with('^') || s.starts_with('~') {
+        return true;
+    }
+    if s.starts_with(">=") || s.starts_with("<=") {
+        return true;
+    }
+    let b = s.as_bytes();
+    if b.first() == Some(&b'>') || b.first() == Some(&b'<') {
+        return true;
+    }
+    if s.contains("||") || s.contains('*') {
+        return true;
+    }
+    // Hyphen range: "1.0.0 - 2.0.0"
+    s.contains(" - ")
+}
+
 pub fn dependencies_string_map(v: &Value) -> BTreeMap<String, String> {
     let mut m = BTreeMap::new();
     let Some(obj) = v.get("dependencies").and_then(|x| x.as_object()) else {

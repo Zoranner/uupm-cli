@@ -170,11 +170,22 @@ async fn freeze_single(
             patch: FreezePatch::default(),
         });
     }
-    if package_version.starts_with("file:") || package_version.starts_with("git:") {
+    if package_version.starts_with("file:")
+        || package_version.starts_with("git:")
+        || package_version.starts_with("https://")
+    {
         return Ok(FreezeOutcome {
             msg: format!("Skipped: {package_name}@{package_version}."),
             patch: FreezePatch::default(),
         });
+    }
+
+    if crate::manifest::looks_like_npm_style_version_range(package_version) {
+        anyhow::bail!(
+            "cannot freeze {}: version {:?} looks like an npm-style range; Unity expects plain SemVer for registry packages (see Unity Manual: Project manifest / Package manifest)",
+            package_name,
+            package_version
+        );
     }
 
     if BUILD_IN_PACKAGES.contains(&package_name) {

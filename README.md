@@ -203,6 +203,12 @@ UUPM stores user-level configuration in `~/.upmrc`.
 
 The file is created automatically on first use. On Windows, `uupm editor scan` can populate common Unity install locations. You can also edit `token` under an origin source by hand; avoid committing secrets.
 
+## Unity manifest version strings
+
+Unity’s project `Packages/manifest.json` and each package’s `package.json` expect **plain SemVer** for registry dependencies (for example `1.2.3` or `1.0.0-preview.1`). They do **not** use npm range operators in those fields (`^`, `~`, `>=`, `*`, `||`, and so on). Resolution behavior uses `resolutionStrategy` and lock files, not npm-style strings in JSON.
+
+UUPM writes **exact** versions on `install` (non-embed). `upgrade` skips entries that look like npm ranges; `freeze` fails with a clear error so you can fix the manifest. `list` marks suspicious values as `non-unity range?`.
+
 ## Current scope
 
 - Manage Unity and NuGet registries (including optional Bearer tokens for Unity sources)

@@ -1,7 +1,7 @@
 use crate::config::{origin_bearer_token, read_configs, resolve_origin_registry};
 use crate::manifest::{
-    dependencies_string_map, load_manifest_value, save_manifest_pretty,
-    scoped_registries_from_value, RegistryPackageBody, MANIFEST_PATH,
+    dependencies_string_map, load_manifest_value, looks_like_npm_style_version_range,
+    save_manifest_pretty, scoped_registries_from_value, RegistryPackageBody, MANIFEST_PATH,
 };
 use crate::versions::{cmp_version_strings, pick_latest_stable};
 use anyhow::{Context, Result};
@@ -44,6 +44,13 @@ async fn upgrade_one(client: &Client, pkg_name: &str, pkg_version: &str) -> Resu
     // 跳过 Unity 内置模块
     if pkg_name.starts_with("com.unity.modules") || pkg_name.starts_with("com.unity.feature") {
         println!("Skipped (builtin): {pkg_name}@{pkg_version}");
+        return Ok(());
+    }
+
+    if looks_like_npm_style_version_range(pkg_version) {
+        println!(
+            "Skipped (not plain SemVer; Unity manifest does not use npm ^/>= ranges): {pkg_name}@{pkg_version}"
+        );
         return Ok(());
     }
 

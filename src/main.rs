@@ -19,7 +19,9 @@ use config::{
     scan_and_merge_editors, set_default_editor, set_default_registry, set_origin_registry_token,
     RegistryKind,
 };
-use manifest::{dependencies_string_map, load_manifest_value, MANIFEST_PATH};
+use manifest::{
+    dependencies_string_map, load_manifest_value, looks_like_npm_style_version_range, MANIFEST_PATH,
+};
 use reqwest::Client;
 use std::path::Path;
 
@@ -321,6 +323,8 @@ fn list_packages() -> Result<()> {
             "local"
         } else if version.starts_with("git:") || version.starts_with("https://") {
             "git"
+        } else if looks_like_npm_style_version_range(version) {
+            "non-unity range?"
         } else {
             "registry"
         };
