@@ -61,6 +61,9 @@ enum Commands {
     Upgrade {
         /// Package name to upgrade; omit to upgrade all
         name: Option<String>,
+        /// Show UPM registry upgrades without writing manifest (NuGet not simulated)
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Create a new Unity package scaffold in the current directory
     #[command(alias = "c")]
@@ -236,9 +239,13 @@ async fn main() -> Result<()> {
         Some(Commands::List) => {
             list_packages()?;
         }
-        Some(Commands::Upgrade { name }) => {
-            upgrade::upgrade_packages(&client, name.as_deref()).await?;
-            println!("Upgrade finished!");
+        Some(Commands::Upgrade { name, dry_run }) => {
+            upgrade::upgrade_packages(&client, name.as_deref(), dry_run).await?;
+            if dry_run {
+                println!("Dry-run finished.");
+            } else {
+                println!("Upgrade finished!");
+            }
         }
         Some(Commands::Create {
             name,

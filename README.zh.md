@@ -131,8 +131,11 @@ uupm create com.vendor.mypkg --display-name "My Package" --author "You" --versio
 uupm list
 uupm upgrade
 uupm upgrade com.vendor.mypkg
+uupm upgrade --dry-run
 uupm remove com.vendor.mypkg
 ```
+
+`--dry-run` 会请求 **UPM 注册表**并打印将要升级的版本，**不会**修改 `manifest.json`。NuGet 在 dry-run 下不做完整模拟（仅提示）。
 
 ### 离线检查工程清单
 
@@ -140,7 +143,7 @@ uupm remove com.vendor.mypkg
 uupm doctor
 ```
 
-检查是否存在 npm 式版本区间、以及 `file:` 指向的 `Packages/` 下路径是否缺失。若发现错误会以非零退出码结束，便于 CI。
+检查 npm 式版本区间、以及 `file:` 路径是否存在。若存在 `Packages/packages-lock.json`，会校验 JSON，并对**注册表**直连依赖与锁文件做比对（缺失或版本字符串不一致时给出 **警告**，不导致非零退出）。**错误**（非法 JSON、清单根类型错误等）仍会使命令以非零退出结束，便于 CI。
 
 ### 查看注册表包信息或搜索
 
@@ -171,7 +174,7 @@ uupm editor add 2022.3.16f1 "C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.16f1"
 | `install` | `i` | 从 Unity 注册表或 NuGet 安装 |
 | `remove` | `rm` | 从清单移除包并清理本地制品 |
 | `list` | `ls` | 列出 `Packages/manifest.json` 中的依赖 |
-| `upgrade` | `up` | 将注册表依赖升级到最新版本 |
+| `upgrade` | `up` | 升级 UPM 注册表依赖（`--dry-run` 仅预览） |
 | `create` | `c` | 创建 Unity 包脚手架 |
 | `info` | - | 查看 Unity 注册表上某包的元数据 |
 | `search` | `s` | 搜索包（需注册表支持 npm `/-/v1/search`） |

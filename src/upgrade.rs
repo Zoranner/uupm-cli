@@ -9,7 +9,7 @@ use reqwest::Client;
 use serde_json::Value;
 use std::path::Path;
 
-pub async fn upgrade_packages(client: &Client, name: Option<&str>) -> Result<()> {
+pub async fn upgrade_packages(client: &Client, name: Option<&str>, dry_run: bool) -> Result<()> {
     if !Path::new(MANIFEST_PATH).exists() {
         anyhow::bail!("no {} found", MANIFEST_PATH);
     }
@@ -27,12 +27,17 @@ pub async fn upgrade_packages(client: &Client, name: Option<&str>) -> Result<()>
     };
 
     for (pkg_name, pkg_version) in targets {
-        upgrade_one(client, &pkg_name, &pkg_version).await?;
+        upgrade_one(client, &pkg_name, &pkg_version, dry_run).await?;
     }
     Ok(())
 }
 
-async fn upgrade_one(client: &Client, pkg_name: &str, pkg_version: &str) -> Result<()> {
+async fn upgrade_one(
+    client: &Client,
+    pkg_name: &str,
+    pkg_version: &str,
+    dry_run: bool,
+) -> Result<()> {
     // 跳过 file: / git: / https:
     if pkg_version.starts_with("file:")
         || pkg_version.starts_with("git:")
@@ -56,6 +61,10 @@ async fn upgrade_one(client: &Client, pkg_name: &str, pkg_version: &str) -> Resu
 
     // NuGet 包走独立升级流程
     if pkg_name.starts_with("org.nuget.") {
+        if dry_run {
+            println!("Dry-run: NuGet upgrade for {pkg_name} is not simulated; run without --dry-run to apply.");
+            return Ok(());
+        }
         println!("Upgrading NuGet: {pkg_name}…");
         crate::nuget::upgrade_nuget_package(client, pkg_name, None).await?;
         return Ok(());
@@ -101,6 +110,13 @@ async fn upgrade_one(client: &Client, pkg_name: &str, pkg_version: &str) -> Resu
 
     if cmp_version_strings(&latest, pkg_version).is_le() {
         println!("Up to date: {pkg_name}@{pkg_version}");
+        return Ok(());
+    }
+
+    if dry_run {
+        println!(
+            "Would upgrade: {pkg_name}  {pkg_version} → {latest} (dry-run, manifest not changed)"
+        );
         return Ok(());
     }
 

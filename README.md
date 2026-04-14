@@ -131,8 +131,11 @@ uupm create com.vendor.mypkg --display-name "My Package" --author "You" --versio
 uupm list
 uupm upgrade
 uupm upgrade com.vendor.mypkg
+uupm upgrade --dry-run
 uupm remove com.vendor.mypkg
 ```
+
+`--dry-run` fetches registry metadata for **UPM** packages and prints what would change; `manifest.json` is not modified. NuGet packages are not fully simulated (only a short note).
 
 ### Validate the project manifest (offline)
 
@@ -140,7 +143,7 @@ uupm remove com.vendor.mypkg
 uupm doctor
 ```
 
-Reports npm-style version ranges and missing `file:` paths under `Packages/`. Exits with a non-zero status if any errors are found (for CI).
+Reports npm-style version ranges and missing `file:` paths under `Packages/`. If `Packages/packages-lock.json` exists, validates JSON and compares **registry** direct dependencies with the lock (warnings when a package is missing or the version string differs). Exits with a non-zero status if any **errors** are found (for CI); lock warnings do not fail the command.
 
 ### Inspect or search a Unity registry
 
@@ -171,7 +174,7 @@ uupm editor add 2022.3.16f1 "C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.16f1"
 | `install` | `i` | Install from a Unity registry or NuGet |
 | `remove` | `rm` | Remove a package from the manifest and local artifacts |
 | `list` | `ls` | List packages in `Packages/manifest.json` |
-| `upgrade` | `up` | Upgrade registry dependencies to the latest version |
+| `upgrade` | `up` | Upgrade UPM registry deps (`--dry-run` to preview) |
 | `create` | `c` | Create a new Unity package scaffold |
 | `info` | - | Show package metadata from a Unity registry |
 | `search` | `s` | Search packages (npm `/-/v1/search` when supported) |
