@@ -50,6 +50,15 @@ uupm i com.example.tools@2.1.0 --embed
 
 该模式会下载 `Packages/com.example.tools-2.1.0.tgz`，并在清单中写入 `file:` 依赖，而不是注册表版本号。
 
+### 在工程清单中添加 Git 依赖
+
+```bash
+uupm install com.vendor.mypkg --git https://github.com/org/repo.git
+uupm i com.vendor.mypkg --git https://github.com/org/repo.git#v1.2.0
+```
+
+将 URL（及可选的 `#revision`）写入 `dependencies`。Unity 在编辑器中解析仓库；UUPM 不会克隆或校验 URL。
+
 ### 安装 NuGet 包
 
 ```bash
@@ -101,6 +110,15 @@ uupm p ./path/to/com.vendor.mypkg -r CustomUPM
 
 打包时会读取目录下的 `.npmignore`（支持 `#` 注释），并始终排除 `.git`、`node_modules` 等常见无关内容以及根目录的 `.npmignore` 文件本身。
 
+### 本地打成 `.tgz`
+
+```bash
+uupm pack
+uupm pack ./path/to/com.vendor.mypkg -o dist/my.tgz
+```
+
+默认输出为当前目录下的 `Packages/<name>-<version>.tgz`，归档布局与 `publish` 一致，不访问网络。
+
 ### 创建包脚手架
 
 ```bash
@@ -149,6 +167,7 @@ uupm editor add 2022.3.16f1 "C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.16f1"
 | `create` | `c` | 创建 Unity 包脚手架 |
 | `info` | - | 查看 Unity 注册表上某包的元数据 |
 | `search` | `s` | 搜索包（需注册表支持 npm `/-/v1/search`） |
+| `pack` | - | 将包目录打成本地 `.tgz` |
 | `publish` | `p` | 将包目录发布到 Unity 注册表 |
 | `freeze` | `f` | 将清单依赖冻结为本地制品 |
 | `registry` | `r` | 管理包注册表 |
@@ -165,6 +184,7 @@ uupm install <name> [source]
 - 默认模式从 Unity 注册表安装。
 - `name` 支持 `com.vendor.package` 与 `com.vendor.package@version`。
 - `--embed` 会将包下载为 `Packages` 下的 `.tgz` 并写入 `file:` 依赖。
+- `--git <url>` 写入 Git URL 依赖（可选 `#revision`）；不能与 `-n`、`--embed` 或 NuGet 的 `[source]` 参数同时使用。
 - `-n` 或 `--nuget` 会切换到 NuGet 安装流程。
 - `[source]` 仅在 NuGet 模式下生效，表示 `~/.upmrc` 中已配置的源名称。
 
@@ -213,10 +233,12 @@ UUPM 在非嵌入安装时会写入**精确**版本。`upgrade` 会跳过疑似 
 
 - 管理 Unity 与 NuGet 注册表（含 Unity 源可选 Bearer 令牌）
 - 安装 Unity 注册表包，并支持嵌入为本地 `.tgz`
+- 在工程清单中添加 Git URL 依赖
 - 将 NuGet 包安装为 Unity 包目录
 - 列出、升级、移除清单依赖
 - 查看注册表包信息（`info`）与可选的 npm 搜索（`search`）
 - 创建 Unity 包脚手架
+- 将包目录打成 `.tgz`（仅本地，不发布）
 - 向 npm 兼容的 Unity 注册表发布包
 - 冻结清单依赖为本地制品
 - 管理 Unity 编辑器路径与默认值

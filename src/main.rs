@@ -34,7 +34,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Install a package from UPM registry (semver in manifest), or from NuGet with -n
+    /// Install a package from UPM registry (semver in manifest), from Git (`--git`), or from NuGet with -n
     #[command(alias = "i")]
     Install {
         name: String,
@@ -43,6 +43,9 @@ enum Commands {
         /// Download UPM package as .tgz into Packages/ and set dependency to file:… (not for NuGet)
         #[arg(long, conflicts_with = "nuget")]
         embed: bool,
+        /// Git URL (optional #revision); writes a Git dependency in the project manifest
+        #[arg(long, conflicts_with_all = ["nuget", "embed"])]
+        git: Option<String>,
         /// NuGet source name from ~/.upmrc (optional)
         source: Option<String>,
     },
@@ -90,6 +93,14 @@ enum Commands {
         registry: Option<String>,
         #[arg(long, default_value_t = 20usize)]
         limit: usize,
+    },
+    /// Pack a package directory into a .tgz (npm `package/` layout; no network)
+    Pack {
+        #[arg(default_value = ".")]
+        dir: String,
+        /// Output path (default: Packages/<name>-<version>.tgz)
+        #[arg(short = 'o', long)]
+        output: Option<String>,
     },
     /// Publish the package in the given directory to a UPM registry
     #[command(alias = "p")]
@@ -198,9 +209,16 @@ async fn main() -> Result<()> {
             name,
             nuget,
             embed,
+            git,
             source,
         }) => {
-            if nuget {
+            if let Some(url) = git {
+                if source.is_some() {
+                    bail!("--git cannot be used together with a NuGet source name");
+                }
+                upm::install_git_dependency(&name, &url)?;
+                println!("Install finished!");
+            } else if nuget {
                 nuget::install_nuget_package(&client, &name, source.as_deref()).await?;
                 println!("Install finished!");
             } else {
@@ -236,6 +254,11 @@ async fn main() -> Result<()> {
             limit,
         }) => {
             info::print_search_results(&client, &query, registry.as_deref(), limit).await?;
+        }
+        Some(Commands::Pack { dir, output }) => {
+            let path =
+                publish::pack_package_directory(Path::new(&dir), output.as_deref().map(Path::new))?;
+            println!("{}", path.display());
         }
         Some(Commands::Publish { dir, registry }) => {
             publish::publish_package(&client, &dir, registry.as_deref()).await?;

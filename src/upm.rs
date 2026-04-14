@@ -4,7 +4,7 @@ use crate::manifest::{
     upsert_scoped_registry, RegistryPackageBody, MANIFEST_PATH,
 };
 use crate::versions::pick_latest_stable;
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::fs;
@@ -150,4 +150,48 @@ fn package_scope(package_name: &str) -> String {
     } else {
         package_name.to_string()
     }
+}
+
+fn looks_like_git_dependency_url(s: &str) -> bool {
+    s.starts_with("https://")
+        || s.starts_with("http://")
+        || s.starts_with("git@")
+        || s.starts_with("ssh://")
+}
+
+/// Add or update a Git URL dependency in `Packages/manifest.json` (optional `#branch`, `#tag`, or `#commit`).
+pub fn install_git_dependency(package_name: &str, git_url: &str) -> Result<()> {
+    let name = package_name.trim();
+    if name.is_empty() {
+        bail!("empty package name");
+    }
+    let url = git_url.trim();
+    if url.is_empty() {
+        bail!("empty --git URL");
+    }
+    if !looks_like_git_dependency_url(url) {
+        bail!(
+            "git URL should start with https://, http://, git@, or ssh:// (got {:?})",
+            url
+        );
+    }
+
+    let mut manifest_v = if Path::new(MANIFEST_PATH).exists() {
+        load_manifest_value(MANIFEST_PATH)?
+    } else {
+        empty_manifest_object()
+    };
+    let Some(root) = manifest_v.as_object_mut() else {
+        bail!("manifest root must be a JSON object");
+    };
+    let deps = root.entry("dependencies").or_insert_with(|| json!({}));
+    let Some(dep_obj) = deps.as_object_mut() else {
+        bail!("manifest.dependencies must be a JSON object");
+    };
+    dep_obj.insert(name.to_string(), Value::String(url.to_string()));
+
+    fs::create_dir_all("Packages")?;
+    save_manifest_pretty(MANIFEST_PATH, &manifest_v)?;
+    println!("Added {name} → {url} in {MANIFEST_PATH}");
+    Ok(())
 }

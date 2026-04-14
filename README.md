@@ -50,6 +50,15 @@ uupm i com.example.tools@2.1.0 --embed
 
 This downloads `Packages/com.example.tools-2.1.0.tgz` and writes a `file:` dependency into the manifest instead of a registry version string.
 
+### Add a Git dependency to the project manifest
+
+```bash
+uupm install com.vendor.mypkg --git https://github.com/org/repo.git
+uupm i com.vendor.mypkg --git https://github.com/org/repo.git#v1.2.0
+```
+
+Writes the URL (and optional `#revision`) as the dependency value. Unity resolves the repository when you open the project in the Editor; UUPM does not clone or verify the URL.
+
 ### Install a NuGet package
 
 ```bash
@@ -101,6 +110,15 @@ If you omit `-r`, the registry is chosen from `~/.upmrc` using scope rules (same
 
 Tarball contents respect `.npmignore` when present (git-style comments supported), and always skip common junk such as `.git`, `node_modules`, and `.npmignore` itself.
 
+### Pack a folder to `.tgz` locally
+
+```bash
+uupm pack
+uupm pack ./path/to/com.vendor.mypkg -o dist/my.tgz
+```
+
+Default output is `Packages/<name>-<version>.tgz` next to the current directory (same archive layout as `publish`).
+
 ### Create a package scaffold
 
 ```bash
@@ -149,6 +167,7 @@ uupm editor add 2022.3.16f1 "C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.16f1"
 | `create` | `c` | Create a new Unity package scaffold |
 | `info` | - | Show package metadata from a Unity registry |
 | `search` | `s` | Search packages (npm `/-/v1/search` when supported) |
+| `pack` | - | Build a local `.tgz` from a package folder |
 | `publish` | `p` | Publish a package directory to a Unity registry |
 | `freeze` | `f` | Freeze manifest dependencies into local artifacts |
 | `registry` | `r` | Manage package registries |
@@ -165,6 +184,7 @@ uupm install <name> [source]
 - Default mode installs from a Unity registry.
 - `name` supports `com.vendor.package` and `com.vendor.package@version`.
 - `--embed` downloads a `.tgz` into `Packages` and writes a `file:` dependency.
+- `--git <url>` writes a Git URL dependency (optional `#revision`); cannot be combined with `-n`, `--embed`, or a NuGet `[source]` argument.
 - `-n` or `--nuget` switches the workflow to NuGet.
 - `[source]` is only used with NuGet and refers to a configured source name in `~/.upmrc`.
 
@@ -213,10 +233,12 @@ UUPM writes **exact** versions on `install` (non-embed). `upgrade` skips entries
 
 - Manage Unity and NuGet registries (including optional Bearer tokens for Unity sources)
 - Install Unity registry packages and embed them as local `.tgz` files
+- Add Git URL dependencies to the project manifest
 - Install NuGet packages as Unity package folders
 - List, upgrade, and remove manifest dependencies
 - Show registry metadata for a package (`info`) and optional npm search (`search`)
 - Create Unity package scaffolds
+- Pack a package folder to a `.tgz` without publishing
 - Publish packages to npm-compatible Unity registries
 - Freeze manifest dependencies into local artifacts
 - Manage Unity editor paths and defaults

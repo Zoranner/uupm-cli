@@ -150,3 +150,26 @@ pub fn scoped_registries_from_value(v: &Value) -> Vec<ScopedRegistry> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::looks_like_npm_style_version_range;
+
+    #[test]
+    fn plain_unity_versions_are_not_ranges() {
+        assert!(!looks_like_npm_style_version_range("1.2.3"));
+        assert!(!looks_like_npm_style_version_range("1.0.0-preview.1"));
+        assert!(!looks_like_npm_style_version_range("file:foo.tgz"));
+        assert!(!looks_like_npm_style_version_range("https://x/y.git"));
+    }
+
+    #[test]
+    fn npm_operators_are_ranges() {
+        assert!(looks_like_npm_style_version_range("^1.0.0"));
+        assert!(looks_like_npm_style_version_range("~1.0.0"));
+        assert!(looks_like_npm_style_version_range(">=1.0.0"));
+        assert!(looks_like_npm_style_version_range(">1.0.0"));
+        assert!(looks_like_npm_style_version_range("1.0.0 - 2.0.0"));
+        assert!(looks_like_npm_style_version_range("1.*.0"));
+    }
+}

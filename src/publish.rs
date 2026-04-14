@@ -7,19 +7,16 @@ use serde_json::{json, Value};
 use std::fs;
 use std::io::Write;
 use std::num::Wrapping;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-pub async fn publish_package(client: &Client, dir: &str, registry: Option<&str>) -> Result<()> {
-    let pkg_dir = Path::new(dir);
-    let pkg_json_path = pkg_dir.join("package.json");
+fn read_package_manifest(dir: &Path) -> Result<(String, String, Value)> {
+    let pkg_json_path = dir.join("package.json");
     if !pkg_json_path.exists() {
         bail!("no package.json found in {:?}", dir);
     }
-
     let pkg_raw = fs::read_to_string(&pkg_json_path)
         .with_context(|| format!("read {}", pkg_json_path.display()))?;
     let pkg: Value = serde_json::from_str(&pkg_raw).context("parse package.json")?;
-
     let name = pkg
         .get("name")
         .and_then(|v| v.as_str())
@@ -28,6 +25,29 @@ pub async fn publish_package(client: &Client, dir: &str, registry: Option<&str>)
         .get("version")
         .and_then(|v| v.as_str())
         .context("package.json missing \"version\"")?;
+    Ok((name.to_string(), version.to_string(), pkg))
+}
+
+/// Write a UPM/npm-style `.tgz` (files under `package/` in the archive). Default output: `Packages/<name>-<version>.tgz`.
+pub fn pack_package_directory(dir: &Path, output: Option<&Path>) -> Result<PathBuf> {
+    let (name, version, _) = read_package_manifest(dir)?;
+    let bytes = build_tarball(dir)?;
+    let file_name = format!("{name}-{version}.tgz");
+    let out_path = if let Some(p) = output {
+        p.to_path_buf()
+    } else {
+        PathBuf::from("Packages").join(&file_name)
+    };
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&out_path, &bytes).with_context(|| format!("write {}", out_path.display()))?;
+    Ok(out_path)
+}
+
+pub async fn publish_package(client: &Client, dir: &str, registry: Option<&str>) -> Result<()> {
+    let pkg_dir = Path::new(dir);
+    let (name, version, pkg) = read_package_manifest(pkg_dir)?;
 
     // 解析目标注册表
     let configs = read_configs()?;
@@ -40,7 +60,7 @@ pub async fn publish_package(client: &Client, dir: &str, registry: Option<&str>)
             .with_context(|| format!("unknown registry {:?}", r))?;
         (r.to_string(), src.clone())
     } else {
-        let (n, s) = resolve_origin_registry(name, &configs)?;
+        let (n, s) = resolve_origin_registry(&name, &configs)?;
         (n.to_string(), s.clone())
     };
     let registry_url = reg_src.url.trim_end_matches('/');
@@ -53,14 +73,16 @@ pub async fn publish_package(client: &Client, dir: &str, registry: Option<&str>)
     let shasum = sha1(&tarball_bytes);
     let tarball_name = format!("{name}-{version}.tgz");
 
+    let version_latest = version.clone();
+    let version_entry = version.clone();
     // npm publish PUT body
     let body = json!({
         "_id": name,
         "name": name,
         "description": pkg.get("description").and_then(|v| v.as_str()).unwrap_or(""),
-        "dist-tags": { "latest": version },
+        "dist-tags": { "latest": version_latest },
         "versions": {
-            version: {
+            version_entry: {
                 "name": name,
                 "version": version,
                 "description": pkg.get("description").and_then(|v| v.as_str()).unwrap_or(""),
@@ -84,7 +106,7 @@ pub async fn publish_package(client: &Client, dir: &str, registry: Option<&str>)
         }
     });
 
-    let url = format!("{registry_url}/{}", urlencoded_name(name));
+    let url = format!("{registry_url}/{}", urlencoded_name(&name));
     let mut req = client.put(&url).json(&body);
     if let Some(token) = &reg_src.token {
         req = req.bearer_auth(token);
