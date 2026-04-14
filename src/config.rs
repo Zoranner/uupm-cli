@@ -1,3 +1,4 @@
+use crate::manifest::ScopedRegistry;
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -355,6 +356,31 @@ pub fn list_registries(kind: RegistryKind) -> Result<()> {
         RegistryKind::Nuget => println!("{}", toml::to_string_pretty(&c.registry.nuget.sources)?),
     }
     Ok(())
+}
+
+/// Bearer token for Unity registry HTTP requests, from `~/.upmrc` origin sources.
+///
+/// Prefer the source whose name matches [`ScopedRegistry::name`] from `manifest.json`, then any
+/// source whose base URL matches `registry_base_url`.
+pub fn origin_bearer_token<'a>(
+    config: &'a GlobalConfig,
+    registry_base_url: &str,
+    manifest_scoped: Option<&ScopedRegistry>,
+) -> Option<&'a str> {
+    let base = registry_base_url.trim_end_matches('/');
+    if let Some(sr) = manifest_scoped {
+        if let Some(src) = config.registry.origin.sources.get(&sr.name) {
+            if let Some(t) = src.token.as_deref() {
+                return Some(t);
+            }
+        }
+    }
+    for src in config.registry.origin.sources.values() {
+        if src.url.trim_end_matches('/') == base {
+            return src.token.as_deref();
+        }
+    }
+    None
 }
 
 /// Find the best registry URL for a given package name.

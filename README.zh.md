@@ -77,7 +77,7 @@ uupm registry add NugetOrg https://api.nuget.org/v3/index.json -n
 uupm registry default NugetOrg -n
 ```
 
-私有 Unity 注册表可配置 Bearer 令牌（可选，例如用于发布）：
+私有 Unity 注册表可配置 Bearer 令牌（可选）：
 
 ```bash
 uupm registry token CustomUPM --token YOUR_TOKEN
@@ -85,6 +85,8 @@ uupm registry token CustomUPM --clear
 # 或在添加注册表时：
 uupm registry add CustomUPM https://registry.example.com/npm --token YOUR_TOKEN
 ```
+
+该令牌会用于注册表的 **GET**（`install`、`freeze`、`upgrade`）以及 **publish** 的 PUT；按 `manifest.json` 里 `scopedRegistries[].name` 或 `~/.upmrc` 中的注册表 URL 与源配置对齐后自动附加。
 
 ### 将 Unity 包发布到注册表
 
@@ -96,6 +98,8 @@ uupm p ./path/to/com.vendor.mypkg -r CustomUPM
 ```
 
 省略 `-r` 时，会按与安装相同的 scope 规则从 `~/.upmrc` 选择注册表。请求体为 npm 兼容的 PUT，并附带 `package/` 前缀的 tarball；若服务端需要鉴权，请为该注册表配置 `token`。
+
+打包时会读取目录下的 `.npmignore`（支持 `#` 注释），并始终排除 `.git`、`node_modules` 等常见无关内容以及根目录的 `.npmignore` 文件本身。
 
 ### 创建包脚手架
 

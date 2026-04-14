@@ -103,13 +103,73 @@ pub async fn publish_package(client: &Client, dir: &str, registry: Option<&str>)
 
 /// Build an in-memory .tgz with all files under `dir/` placed under `package/` prefix.
 fn build_tarball(dir: &Path) -> Result<Vec<u8>> {
+    let npmignore = load_npmignore_lines(dir);
     let buf = Vec::new();
     let enc = GzEncoder::new(buf, Compression::default());
     let mut tar = tar::Builder::new(enc);
     tar.follow_symlinks(false);
-    append_dir_recursive(&mut tar, dir, dir, "package")?;
+    append_dir_recursive(&mut tar, dir, dir, "package", &npmignore)?;
     let gz = tar.into_inner().context("finalize tar")?;
     gz.finish().context("finalize gzip")
+}
+
+fn load_npmignore_lines(dir: &Path) -> Vec<String> {
+    let p = dir.join(".npmignore");
+    if !p.is_file() {
+        return Vec::new();
+    }
+    let Ok(raw) = fs::read_to_string(&p) else {
+        return Vec::new();
+    };
+    raw.lines()
+        .filter_map(|line| {
+            let t = line.split('#').next().unwrap_or("").trim();
+            if t.is_empty() {
+                None
+            } else {
+                Some(t.replace('\\', "/"))
+            }
+        })
+        .collect()
+}
+
+fn is_default_ignored_segment(seg: &str) -> bool {
+    matches!(
+        seg,
+        ".git" | ".hg" | ".svn" | ".vs" | "node_modules" | "__pycache__" | ".idea"
+    )
+}
+
+fn rule_excludes_rel(rel_posix: &str, rule: &str) -> bool {
+    if rule.ends_with('/') {
+        let p = rule.trim_end_matches('/');
+        rel_posix == p || rel_posix.starts_with(&format!("{p}/"))
+    } else {
+        rel_posix == rule
+            || rel_posix.starts_with(&format!("{rule}/"))
+            || rel_posix.ends_with(&format!("/{rule}"))
+    }
+}
+
+fn is_path_ignored_for_pack(rel_posix: &str, npmignore: &[String]) -> bool {
+    let lower = rel_posix.to_ascii_lowercase();
+    if lower == ".ds_store" || lower.ends_with("/.ds_store") {
+        return true;
+    }
+    if lower == "thumbs.db" || lower.ends_with("/thumbs.db") {
+        return true;
+    }
+    if rel_posix == ".npmignore" {
+        return true;
+    }
+    for seg in rel_posix.split('/') {
+        if is_default_ignored_segment(seg) {
+            return true;
+        }
+    }
+    npmignore
+        .iter()
+        .any(|rule| rule_excludes_rel(rel_posix, rule))
 }
 
 fn append_dir_recursive<W: Write>(
@@ -117,14 +177,19 @@ fn append_dir_recursive<W: Write>(
     base: &Path,
     current: &Path,
     prefix: &str,
+    npmignore: &[String],
 ) -> Result<()> {
     for entry in fs::read_dir(current)? {
         let entry = entry?;
         let path = entry.path();
         let rel = path.strip_prefix(base).unwrap();
-        let tar_path = format!("{prefix}/{}", rel.to_string_lossy().replace('\\', "/"));
+        let rel_posix = rel.to_string_lossy().replace('\\', "/");
+        if is_path_ignored_for_pack(&rel_posix, npmignore) {
+            continue;
+        }
+        let tar_path = format!("{prefix}/{}", rel_posix);
         if path.is_dir() {
-            append_dir_recursive(tar, base, &path, prefix)?;
+            append_dir_recursive(tar, base, &path, prefix, npmignore)?;
         } else {
             let mut file =
                 fs::File::open(&path).with_context(|| format!("open {}", path.display()))?;

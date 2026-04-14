@@ -1,4 +1,4 @@
-use crate::config::{read_configs, resolve_origin_registry};
+use crate::config::{origin_bearer_token, read_configs, resolve_origin_registry};
 use crate::manifest::{
     empty_manifest_object, load_manifest_value, save_manifest_pretty, scoped_registries_from_value,
     upsert_scoped_registry, RegistryPackageBody, MANIFEST_PATH,
@@ -33,11 +33,12 @@ pub async fn install_upm_package(client: &Client, spec: &str, embed: bool) -> Re
 
     // 1. manifest 里已有 scopedRegistries 匹配 → 直接用，不动 manifest
     let scoped = scoped_registries_from_value(&manifest_v);
-    let registry_url = if let Some(reg) = scoped.iter().find(|r| {
+    let matched = scoped.iter().find(|r| {
         r.scopes
             .iter()
             .any(|s| package_name.starts_with(s.as_str()))
-    }) {
+    });
+    let registry_url = if let Some(reg) = matched {
         reg.url.trim_end_matches('/').to_string()
     } else {
         // 2. 从 ~/.upmrc.toml 的 origin sources 里按 scope 匹配
@@ -52,10 +53,15 @@ pub async fn install_upm_package(client: &Client, spec: &str, embed: bool) -> Re
         url
     };
 
+    let token = origin_bearer_token(&configs, &registry_url, matched);
+
     let fetch_url = format!("{registry_url}/{package_name}");
     println!("Fetching {} …", fetch_url);
-    let body: RegistryPackageBody = client
-        .get(&fetch_url)
+    let mut req = client.get(&fetch_url);
+    if let Some(t) = token {
+        req = req.bearer_auth(t);
+    }
+    let body: RegistryPackageBody = req
         .send()
         .await?
         .error_for_status()
@@ -89,8 +95,11 @@ pub async fn install_upm_package(client: &Client, spec: &str, embed: bool) -> Re
         let tarball_name = format!("{package_name}-{chosen}.tgz");
         let download_url = &version_info.dist.tarball;
         println!("Downloading {} …", download_url);
-        let bytes = client
-            .get(download_url)
+        let mut t_req = client.get(download_url.as_str());
+        if let Some(t) = token {
+            t_req = t_req.bearer_auth(t);
+        }
+        let bytes = t_req
             .send()
             .await?
             .error_for_status()

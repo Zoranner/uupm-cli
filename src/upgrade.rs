@@ -1,4 +1,4 @@
-use crate::config::{read_configs, resolve_origin_registry};
+use crate::config::{origin_bearer_token, read_configs, resolve_origin_registry};
 use crate::manifest::{
     dependencies_string_map, load_manifest_value, save_manifest_pretty,
     scoped_registries_from_value, RegistryPackageBody, MANIFEST_PATH,
@@ -58,19 +58,23 @@ async fn upgrade_one(client: &Client, pkg_name: &str, pkg_version: &str) -> Resu
     let manifest_v = load_manifest_value(MANIFEST_PATH)?;
     let configs = read_configs()?;
     let scoped = scoped_registries_from_value(&manifest_v);
-    let registry_url = if let Some(reg) = scoped
+    let matched = scoped
         .iter()
-        .find(|r| r.scopes.iter().any(|s| pkg_name.starts_with(s.as_str())))
-    {
+        .find(|r| r.scopes.iter().any(|s| pkg_name.starts_with(s.as_str())));
+    let registry_url = if let Some(reg) = matched {
         reg.url.trim_end_matches('/').to_string()
     } else {
         let (_, src) = resolve_origin_registry(pkg_name, &configs)?;
         src.url.trim_end_matches('/').to_string()
     };
+    let token = origin_bearer_token(&configs, &registry_url, matched);
 
     let fetch_url = format!("{registry_url}/{pkg_name}");
-    let body: RegistryPackageBody = client
-        .get(&fetch_url)
+    let mut req = client.get(&fetch_url);
+    if let Some(t) = token {
+        req = req.bearer_auth(t);
+    }
+    let body: RegistryPackageBody = req
         .send()
         .await?
         .error_for_status()

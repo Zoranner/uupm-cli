@@ -77,7 +77,7 @@ uupm registry add NugetOrg https://api.nuget.org/v3/index.json -n
 uupm registry default NugetOrg -n
 ```
 
-Bearer tokens for private Unity registries (optional, e.g. for publish):
+Bearer tokens for private Unity registries (optional):
 
 ```bash
 uupm registry token CustomUPM --token YOUR_TOKEN
@@ -85,6 +85,8 @@ uupm registry token CustomUPM --clear
 # or when adding the registry:
 uupm registry add CustomUPM https://registry.example.com/npm --token YOUR_TOKEN
 ```
+
+The same token is sent on registry **GET** requests (`install`, `freeze`, `upgrade`) and on **publish** PUT, matched by `scopedRegistries[].name` in `manifest.json` or by registry URL in `~/.upmrc`.
 
 ### Publish a Unity package to a registry
 
@@ -96,6 +98,8 @@ uupm p ./path/to/com.vendor.mypkg -r CustomUPM
 ```
 
 If you omit `-r`, the registry is chosen from `~/.upmrc` using scope rules (same as install). The request uses an npm-compatible PUT with a `package/` tarball; set a token on that registry if the server requires authentication.
+
+Tarball contents respect `.npmignore` when present (git-style comments supported), and always skip common junk such as `.git`, `node_modules`, and `.npmignore` itself.
 
 ### Create a package scaffold
 

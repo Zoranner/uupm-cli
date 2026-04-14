@@ -1,4 +1,4 @@
-use crate::config::{read_configs, resolve_origin_registry};
+use crate::config::{origin_bearer_token, read_configs, resolve_origin_registry};
 use crate::manifest::{
     dependencies_string_map, load_manifest_value, save_manifest_pretty,
     scoped_registries_from_value, RegistryPackageBody, MANIFEST_PATH,
@@ -64,20 +64,30 @@ pub async fn freeze_packages(client: &Client) -> Result<()> {
 
     while let Some((package_name, package_version)) = package_map.pop_first() {
         // manifest scopedRegistries 优先，fallback 到 ~/.upmrc.toml
-        let registry_url = if let Some(reg) = scoped.iter().find(|r| {
+        let matched = scoped.iter().find(|r| {
             r.scopes
                 .iter()
                 .any(|s| package_name.starts_with(s.as_str()))
-        }) {
+        });
+        let registry_url = if let Some(reg) = matched {
             reg.url.trim_end_matches('/').to_string()
         } else {
             let (_, src) = resolve_origin_registry(&package_name, &configs)?;
             src.url.trim_end_matches('/').to_string()
         };
+        let token = origin_bearer_token(&configs, &registry_url, matched).map(String::from);
         let c = client.clone();
         let ep = editor_path.clone();
         let outcome = step_spinner("Freezing unity package...", async move {
-            freeze_single(&c, &ep, &package_name, &package_version, &registry_url).await
+            freeze_single(
+                &c,
+                &ep,
+                &package_name,
+                &package_version,
+                &registry_url,
+                token,
+            )
+            .await
         })
         .await?;
         apply_patch(&mut manifest_v, &mut package_map, outcome.patch);
@@ -150,6 +160,7 @@ async fn freeze_single(
     package_name: &str,
     package_version: &str,
     registry_url: &str,
+    registry_token: Option<String>,
 ) -> Result<FreezeOutcome> {
     if package_name.starts_with("com.unity.modules")
         || package_name.starts_with("com.unity.feature")
@@ -170,7 +181,14 @@ async fn freeze_single(
         return freeze_builtin(editor_path, package_name, package_version);
     }
 
-    freeze_from_registry(client, package_name, package_version, registry_url).await
+    freeze_from_registry(
+        client,
+        package_name,
+        package_version,
+        registry_url,
+        registry_token.as_deref(),
+    )
+    .await
 }
 
 fn freeze_builtin(
@@ -212,10 +230,14 @@ async fn freeze_from_registry(
     package_name: &str,
     package_version: &str,
     registry_url: &str,
+    token: Option<&str>,
 ) -> Result<FreezeOutcome> {
     let package_info_url = format!("{registry_url}/{package_name}");
-    let resp = client
-        .get(&package_info_url)
+    let mut meta_req = client.get(&package_info_url);
+    if let Some(t) = token {
+        meta_req = meta_req.bearer_auth(t);
+    }
+    let resp = meta_req
         .send()
         .await
         .with_context(|| format!("network error fetching {package_name}"))?
@@ -230,8 +252,11 @@ async fn freeze_from_registry(
     };
     let tarball_name = format!("{package_name}-{package_version}.tgz");
     let download_url = &version_info.dist.tarball;
-    let bytes = client
-        .get(download_url)
+    let mut dl_req = client.get(download_url.as_str());
+    if let Some(t) = token {
+        dl_req = dl_req.bearer_auth(t);
+    }
+    let bytes = dl_req
         .send()
         .await
         .with_context(|| format!("network error downloading tarball for {package_name}"))?
