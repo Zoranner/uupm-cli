@@ -134,6 +134,14 @@ uupm upgrade com.vendor.mypkg
 uupm remove com.vendor.mypkg
 ```
 
+### Validate the project manifest (offline)
+
+```bash
+uupm doctor
+```
+
+Reports npm-style version ranges and missing `file:` paths under `Packages/`. Exits with a non-zero status if any errors are found (for CI).
+
 ### Inspect or search a Unity registry
 
 ```bash
@@ -170,6 +178,7 @@ uupm editor add 2022.3.16f1 "C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.16f1"
 | `pack` | - | Build a local `.tgz` from a package folder |
 | `publish` | `p` | Publish a package directory to a Unity registry |
 | `freeze` | `f` | Freeze manifest dependencies into local artifacts |
+| `doctor` | - | Offline manifest checks (non-zero exit on errors) |
 | `registry` | `r` | Manage package registries |
 | `editor` | `e` | Manage Unity editor paths |
 
@@ -236,6 +245,7 @@ UUPM writes **exact** versions on `install` (non-embed). `upgrade` skips entries
 - Add Git URL dependencies to the project manifest
 - Install NuGet packages as Unity package folders
 - List, upgrade, and remove manifest dependencies
+- Run offline manifest checks (`doctor`)
 - Show registry metadata for a package (`info`) and optional npm search (`search`)
 - Create Unity package scaffolds
 - Pack a package folder to a `.tgz` without publishing

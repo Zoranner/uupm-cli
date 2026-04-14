@@ -1,5 +1,6 @@
 mod config;
 mod create;
+mod doctor;
 mod freeze;
 mod info;
 mod manifest;
@@ -115,6 +116,8 @@ enum Commands {
     /// Freeze manifest dependencies to local tarballs / embedded packages
     #[command(alias = "f")]
     Freeze,
+    /// Check manifest for common problems (offline; exits non-zero if errors found)
+    Doctor,
     /// Manage registries
     #[command(subcommand, alias = "r")]
     Registry(RegistryCli),
@@ -267,6 +270,9 @@ async fn main() -> Result<()> {
             println!("Freezing project packages...");
             freeze::freeze_packages(&client).await?;
             println!("Freeze finished!");
+        }
+        Some(Commands::Doctor) => {
+            doctor::run()?;
         }
         Some(Commands::Registry(sub)) => match sub {
             RegistryCli::Add {

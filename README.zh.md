@@ -134,6 +134,14 @@ uupm upgrade com.vendor.mypkg
 uupm remove com.vendor.mypkg
 ```
 
+### 离线检查工程清单
+
+```bash
+uupm doctor
+```
+
+检查是否存在 npm 式版本区间、以及 `file:` 指向的 `Packages/` 下路径是否缺失。若发现错误会以非零退出码结束，便于 CI。
+
 ### 查看注册表包信息或搜索
 
 ```bash
@@ -170,6 +178,7 @@ uupm editor add 2022.3.16f1 "C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.16f1"
 | `pack` | - | 将包目录打成本地 `.tgz` |
 | `publish` | `p` | 将包目录发布到 Unity 注册表 |
 | `freeze` | `f` | 将清单依赖冻结为本地制品 |
+| `doctor` | - | 离线检查清单（有错则非零退出） |
 | `registry` | `r` | 管理包注册表 |
 | `editor` | `e` | 管理 Unity 编辑器路径 |
 
@@ -236,6 +245,7 @@ UUPM 在非嵌入安装时会写入**精确**版本。`upgrade` 会跳过疑似 
 - 在工程清单中添加 Git URL 依赖
 - 将 NuGet 包安装为 Unity 包目录
 - 列出、升级、移除清单依赖
+- 离线检查清单（`doctor`）
 - 查看注册表包信息（`info`）与可选的 npm 搜索（`search`）
 - 创建 Unity 包脚手架
 - 将包目录打成 `.tgz`（仅本地，不发布）
