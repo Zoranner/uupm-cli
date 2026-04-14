@@ -243,6 +243,8 @@ UUPM writes **exact** versions on `install` (non-embed). `upgrade` skips entries
 
 ## Current scope
 
+**0.1.0** is the first public Rust release: core commands below are meant for everyday use. Optional registry APIs (`search`, some publish backends) vary by server—exercise `publish` against your registry before wiring it into CI.
+
 - Manage Unity and NuGet registries (including optional Bearer tokens for Unity sources)
 - Install Unity registry packages and embed them as local `.tgz` files
 - Add Git URL dependencies to the project manifest

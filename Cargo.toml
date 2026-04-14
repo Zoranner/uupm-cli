@@ -5,6 +5,9 @@ edition = "2021"
 description = "Unity Package Manager CLI — Rust port of @uupm/cli"
 license = "MIT"
 authors = ["Zoranner"]
+repository = "https://github.com/Zoranner/uupm-cli"
+homepage = "https://github.com/Zoranner/uupm-cli"
+readme = "README.md"
 
 [[bin]]
 name = "uupm"
