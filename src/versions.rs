@@ -47,3 +47,51 @@ fn numeric_prefix_components(s: &str) -> Vec<u32> {
         .filter_map(|part| part.parse::<u32>().ok())
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{cmp_version_strings, pick_latest_stable};
+    use std::cmp::Ordering;
+
+    #[test]
+    fn pick_latest_prefers_non_prerelease() {
+        let v = pick_latest_stable(&[
+            "1.0.0-preview.1".to_string(),
+            "0.9.0".to_string(),
+            "1.0.0-beta.2".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(v, "0.9.0");
+    }
+
+    #[test]
+    fn pick_latest_among_stables() {
+        let v = pick_latest_stable(&[
+            "1.2.3".to_string(),
+            "2.0.0".to_string(),
+            "1.9.9".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(v, "2.0.0");
+    }
+
+    #[test]
+    fn pick_latest_only_prereleases() {
+        let v = pick_latest_stable(&["1.0.0-preview.1".to_string(), "1.0.0-preview.2".to_string()])
+            .unwrap();
+        assert_eq!(v, "1.0.0-preview.2");
+    }
+
+    #[test]
+    fn pick_latest_empty_errors() {
+        assert!(pick_latest_stable(&[]).is_err());
+    }
+
+    #[test]
+    fn cmp_version_numeric_segments() {
+        assert_eq!(cmp_version_strings("2.0.0", "10.0.0"), Ordering::Less);
+        assert_eq!(cmp_version_strings("10.0.0", "2.0.0"), Ordering::Greater);
+        assert_eq!(cmp_version_strings("1.0.0", "1.0.0"), Ordering::Equal);
+        assert_eq!(cmp_version_strings("1.0.1", "1.0.0"), Ordering::Greater);
+    }
+}

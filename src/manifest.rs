@@ -153,7 +153,11 @@ pub fn scoped_registries_from_value(v: &Value) -> Vec<ScopedRegistry> {
 
 #[cfg(test)]
 mod tests {
-    use super::looks_like_npm_style_version_range;
+    use super::{
+        dependencies_string_map, empty_manifest_object, looks_like_npm_style_version_range,
+        scoped_registries_from_value, upsert_scoped_registry,
+    };
+    use serde_json::json;
 
     #[test]
     fn plain_unity_versions_are_not_ranges() {
@@ -161,6 +165,9 @@ mod tests {
         assert!(!looks_like_npm_style_version_range("1.0.0-preview.1"));
         assert!(!looks_like_npm_style_version_range("file:foo.tgz"));
         assert!(!looks_like_npm_style_version_range("https://x/y.git"));
+        assert!(!looks_like_npm_style_version_range(
+            "git:https://example.com/pkg.git"
+        ));
     }
 
     #[test]
@@ -168,8 +175,79 @@ mod tests {
         assert!(looks_like_npm_style_version_range("^1.0.0"));
         assert!(looks_like_npm_style_version_range("~1.0.0"));
         assert!(looks_like_npm_style_version_range(">=1.0.0"));
+        assert!(looks_like_npm_style_version_range("<=1.0.0"));
+        assert!(looks_like_npm_style_version_range("<1.0.0"));
         assert!(looks_like_npm_style_version_range(">1.0.0"));
         assert!(looks_like_npm_style_version_range("1.0.0 - 2.0.0"));
         assert!(looks_like_npm_style_version_range("1.*.0"));
+        assert!(looks_like_npm_style_version_range(" ^2.0.0 "));
+    }
+
+    #[test]
+    fn dependencies_string_map_skips_non_strings() {
+        let v = json!({
+            "dependencies": {
+                "a": "1.0.0",
+                "b": { "oops": true },
+                "c": "2.0.0"
+            }
+        });
+        let m = dependencies_string_map(&v);
+        assert_eq!(m.len(), 2);
+        assert_eq!(m.get("a").map(String::as_str), Some("1.0.0"));
+        assert_eq!(m.get("c").map(String::as_str), Some("2.0.0"));
+        assert!(!m.contains_key("b"));
+    }
+
+    #[test]
+    fn empty_manifest_has_dependencies_object() {
+        let v = empty_manifest_object();
+        assert!(v.get("dependencies").and_then(|d| d.as_object()).is_some());
+        assert!(v
+            .get("dependencies")
+            .and_then(|d| d.as_object())
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn upsert_scoped_registry_merges_same_url() {
+        let mut v = json!({
+            "scopedRegistries": [{
+                "name": "R1",
+                "url": "https://r.example",
+                "scopes": ["com.a"]
+            }]
+        });
+        upsert_scoped_registry(&mut v, "R1", "https://r.example", "com.b").unwrap();
+        let scopes = v["scopedRegistries"][0]["scopes"].as_array().unwrap();
+        assert_eq!(scopes.len(), 2);
+        assert!(scopes.iter().any(|x| x.as_str() == Some("com.a")));
+        assert!(scopes.iter().any(|x| x.as_str() == Some("com.b")));
+    }
+
+    #[test]
+    fn upsert_scoped_registry_appends_new_entry() {
+        let mut v = json!({ "dependencies": {} });
+        upsert_scoped_registry(&mut v, "MyReg", "https://new.example", "com.vendor").unwrap();
+        let list = scoped_registries_from_value(&v);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "MyReg");
+        assert_eq!(list[0].url, "https://new.example");
+        assert_eq!(list[0].scopes, vec!["com.vendor".to_string()]);
+    }
+
+    #[test]
+    fn scoped_registries_from_value_ignores_malformed_entries() {
+        let v = json!({
+            "scopedRegistries": [
+                { "name": "ok", "url": "https://x", "scopes": ["a"] },
+                { "name": "bad" },
+                "not-an-object"
+            ]
+        });
+        let list = scoped_registries_from_value(&v);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "ok");
     }
 }

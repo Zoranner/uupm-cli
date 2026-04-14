@@ -283,3 +283,158 @@ fn sha1(data: &[u8]) -> String {
 fn urlencoded_name(name: &str) -> String {
     name.replace('/', "%2F")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        is_path_ignored_for_pack, load_npmignore_lines, pack_package_directory, rule_excludes_rel,
+        sha1, urlencoded_name,
+    };
+    use anyhow::Result;
+    use flate2::read::GzDecoder;
+    use std::fs;
+    use std::fs::File;
+    use std::path::Path;
+
+    fn tgz_file_entry_paths(path: &Path) -> Result<Vec<String>> {
+        let f = File::open(path)?;
+        let dec = GzDecoder::new(f);
+        let mut ar = tar::Archive::new(dec);
+        let mut v = Vec::new();
+        for e in ar.entries()? {
+            let e = e?;
+            if e.header().entry_type().is_file() {
+                v.push(e.path()?.to_string_lossy().replace('\\', "/"));
+            }
+        }
+        Ok(v)
+    }
+
+    #[test]
+    fn load_npmignore_parses_comments_and_blank_lines() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join(".npmignore"),
+            "# c\n\nfoo/\n  bar.txt  \n#tail\n",
+        )
+        .unwrap();
+        let lines = load_npmignore_lines(tmp.path());
+        assert_eq!(lines, vec!["foo/".to_string(), "bar.txt".to_string()]);
+    }
+
+    #[test]
+    fn pack_tarball_respects_npmignore_and_excludes_vcs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(
+            root.join("package.json"),
+            r#"{"name":"com.t.pack","version":"0.2.0"}"#,
+        )
+        .unwrap();
+        fs::write(root.join("keep.txt"), "x").unwrap();
+        fs::write(root.join("omit.txt"), "y").unwrap();
+        fs::write(root.join(".npmignore"), "omit.txt\n").unwrap();
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::write(root.join(".git/config"), "[core]\n").unwrap();
+        let out = root.join("out.tgz");
+        pack_package_directory(root, Some(&out)).unwrap();
+        let paths = tgz_file_entry_paths(&out).unwrap();
+        assert!(paths.iter().any(|p| p.ends_with("package/package.json")));
+        assert!(paths.iter().any(|p| p.ends_with("package/keep.txt")));
+        assert!(!paths.iter().any(|p| p.contains("omit.txt")));
+        assert!(!paths.iter().any(|p| p.contains(".git")));
+    }
+
+    #[test]
+    fn pack_errors_without_package_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let out = tmp.path().join("out.tgz");
+        let err = pack_package_directory(tmp.path(), Some(&out)).unwrap_err();
+        assert!(
+            err.to_string().contains("no package.json"),
+            "unexpected error: {err:#}"
+        );
+    }
+
+    #[test]
+    fn pack_errors_on_invalid_package_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("package.json"), "not json").unwrap();
+        let err =
+            pack_package_directory(tmp.path(), Some(&tmp.path().join("out.tgz"))).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("parse package.json"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn pack_errors_when_package_json_missing_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("package.json"), r#"{"version":"1.0.0"}"#).unwrap();
+        let err =
+            pack_package_directory(tmp.path(), Some(&tmp.path().join("out.tgz"))).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("package.json missing \"name\""),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn pack_errors_when_package_json_missing_version() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("package.json"), r#"{"name":"com.x"}"#).unwrap();
+        let err =
+            pack_package_directory(tmp.path(), Some(&tmp.path().join("out.tgz"))).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("package.json missing \"version\""),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn urlencoded_name_escapes_slash() {
+        assert_eq!(urlencoded_name("@scope/pkg"), "@scope%2Fpkg");
+        assert_eq!(urlencoded_name("com.plain"), "com.plain");
+    }
+
+    #[test]
+    fn rule_excludes_directory_prefix() {
+        assert!(rule_excludes_rel("Tests/foo", "Tests/"));
+        assert!(!rule_excludes_rel("Other/foo", "Tests/"));
+        assert!(rule_excludes_rel("Tests", "Tests/"));
+    }
+
+    #[test]
+    fn rule_excludes_file_or_subpath() {
+        assert!(rule_excludes_rel("secret", "secret"));
+        assert!(rule_excludes_rel("dir/secret", "secret"));
+        assert!(rule_excludes_rel("secret/file", "secret"));
+    }
+
+    #[test]
+    fn pack_ignores_default_segments_and_ds_store() {
+        let rules: Vec<String> = vec![];
+        assert!(is_path_ignored_for_pack(".git/config", &rules));
+        assert!(is_path_ignored_for_pack("pkg/.DS_Store", &rules));
+        assert!(is_path_ignored_for_pack(".npmignore", &rules));
+        assert!(!is_path_ignored_for_pack("package.json", &rules));
+    }
+
+    #[test]
+    fn pack_respects_npmignore_rules() {
+        let rules = vec!["tmp/".to_string(), "secret.txt".to_string()];
+        assert!(is_path_ignored_for_pack("tmp/a", &rules));
+        assert!(is_path_ignored_for_pack("x/secret.txt", &rules));
+        assert!(!is_path_ignored_for_pack("src/lib.cs", &rules));
+    }
+
+    #[test]
+    fn sha1_known_vectors() {
+        assert_eq!(sha1(b""), "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+        assert_eq!(sha1(b"abc"), "a9993e364706816aba3e25717850c26c9cd0d89d");
+    }
+}

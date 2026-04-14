@@ -467,3 +467,83 @@ pub fn scan_and_merge_editors() -> Result<()> {
     println!("Editor entries updated.");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        origin_bearer_token, resolve_origin_registry, EditorSection, GlobalConfig, NugetGroup,
+        OriginGroup, OriginSource, RegistrySection, ScopedRegistry,
+    };
+    use std::collections::BTreeMap;
+
+    fn sample_config() -> GlobalConfig {
+        let mut origin_sources = BTreeMap::new();
+        origin_sources.insert(
+            "Unity".to_string(),
+            OriginSource {
+                url: "https://packages.unity.com".to_string(),
+                scopes: vec![],
+                token: Some("tok-default".to_string()),
+            },
+        );
+        origin_sources.insert(
+            "Vendor".to_string(),
+            OriginSource {
+                url: "https://registry.vendor.example/".to_string(),
+                scopes: vec!["com.vendor".to_string(), "com".to_string()],
+                token: Some("tok-vendor".to_string()),
+            },
+        );
+        GlobalConfig {
+            registry: RegistrySection {
+                origin: OriginGroup {
+                    default: "Unity".to_string(),
+                    sources: origin_sources,
+                },
+                nuget: NugetGroup {
+                    default: "NuGet".to_string(),
+                    sources: BTreeMap::new(),
+                },
+            },
+            editor: EditorSection {
+                default: String::new(),
+                versions: BTreeMap::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn resolve_origin_longest_scope_wins() {
+        let c = sample_config();
+        let (name, src) = resolve_origin_registry("com.vendor.tools", &c).unwrap();
+        assert_eq!(name, "Vendor");
+        assert!(src.url.contains("vendor"));
+    }
+
+    #[test]
+    fn resolve_origin_falls_back_to_default() {
+        let c = sample_config();
+        // Must not match Vendor scopes (`com`, `com.vendor`) — e.g. `org.*` is unscoped here.
+        let (name, _) = resolve_origin_registry("org.example.lib", &c).unwrap();
+        assert_eq!(name, "Unity");
+    }
+
+    #[test]
+    fn origin_bearer_prefers_manifest_scoped_name() {
+        let c = sample_config();
+        let sr = ScopedRegistry {
+            name: "Vendor".to_string(),
+            url: "https://registry.vendor.example/".to_string(),
+            scopes: vec!["com.vendor".to_string()],
+        };
+        let t = origin_bearer_token(&c, "https://registry.vendor.example", Some(&sr));
+        assert_eq!(t, Some("tok-vendor"));
+    }
+
+    #[test]
+    fn origin_bearer_matches_url_when_name_unknown() {
+        let c = sample_config();
+        let t = origin_bearer_token(&c, "https://packages.unity.com", None);
+        assert_eq!(t, Some("tok-default"));
+    }
+}

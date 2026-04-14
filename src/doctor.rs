@@ -49,7 +49,10 @@ pub fn run() -> Result<()> {
         match serde_json::from_str::<Value>(&raw) {
             Ok(lock) => {
                 if let Some(lock_obj) = lock.as_object() {
-                    check_lock_against_manifest(&deps, lock_obj, &mut warnings);
+                    for msg in lock_check_messages(&deps, lock_obj) {
+                        println!("{msg}");
+                        warnings += 1;
+                    }
                 } else {
                     println!("Error: {} root must be a JSON object", PACKAGES_LOCK_PATH);
                     errors += 1;
@@ -83,11 +86,12 @@ pub fn run() -> Result<()> {
     }
 }
 
-fn check_lock_against_manifest(
+/// Warnings that would be printed for registry direct deps vs `packages-lock.json`.
+fn lock_check_messages(
     deps: &std::collections::BTreeMap<String, String>,
     lock_obj: &serde_json::Map<String, Value>,
-    warnings: &mut usize,
-) {
+) -> Vec<String> {
+    let mut out = Vec::new();
     for (name, ver) in deps {
         if looks_like_npm_style_version_range(ver) {
             continue;
@@ -97,22 +101,79 @@ fn check_lock_against_manifest(
         }
 
         let Some(entry) = lock_obj.get(name) else {
-            println!(
+            out.push(format!(
                 "Warning: {:?} is in manifest but not in {} (re-resolve in Unity Editor)",
                 name, PACKAGES_LOCK_PATH
-            );
-            *warnings += 1;
+            ));
             continue;
         };
         let Some(lock_ver) = entry.get("version").and_then(|v| v.as_str()) else {
             continue;
         };
         if lock_ver != ver.as_str() {
-            println!(
+            out.push(format!(
                 "Warning: {:?} manifest version {:?} differs from lock {:?}",
                 name, ver, lock_ver
-            );
-            *warnings += 1;
+            ));
         }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lock_check_messages;
+    use serde_json::{json, Map, Value};
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn lock_check_skips_non_registry_entries() {
+        let mut deps = BTreeMap::new();
+        deps.insert("a".to_string(), "file:foo.tgz".to_string());
+        deps.insert("b".to_string(), "git:https://x".to_string());
+        deps.insert("c".to_string(), "https://x/y.git".to_string());
+        deps.insert("d".to_string(), "^1.0.0".to_string());
+        let lock = Map::new();
+        assert!(lock_check_messages(&deps, &lock).is_empty());
+    }
+
+    #[test]
+    fn lock_check_warns_missing_package() {
+        let mut deps = BTreeMap::new();
+        deps.insert("com.vendor.pkg".to_string(), "1.0.0".to_string());
+        let lock = Map::new();
+        let msgs = lock_check_messages(&deps, &lock);
+        assert_eq!(msgs.len(), 1);
+        assert!(msgs[0].contains("com.vendor.pkg"));
+        assert!(msgs[0].contains("packages-lock.json"));
+    }
+
+    #[test]
+    fn lock_check_warns_version_mismatch() {
+        let mut deps = BTreeMap::new();
+        deps.insert("com.vendor.pkg".to_string(), "2.0.0".to_string());
+        let mut lock = Map::new();
+        lock.insert("com.vendor.pkg".to_string(), json!({ "version": "1.0.0" }));
+        let msgs = lock_check_messages(&deps, &lock);
+        assert_eq!(msgs.len(), 1);
+        assert!(msgs[0].contains("differs from lock"));
+    }
+
+    #[test]
+    fn lock_check_quiet_when_version_matches() {
+        let mut deps = BTreeMap::new();
+        deps.insert("com.vendor.pkg".to_string(), "1.0.0".to_string());
+        let mut lock = Map::new();
+        lock.insert("com.vendor.pkg".to_string(), json!({ "version": "1.0.0" }));
+        assert!(lock_check_messages(&deps, &lock).is_empty());
+    }
+
+    #[test]
+    fn lock_check_ignores_entry_without_version_field() {
+        let mut deps = BTreeMap::new();
+        deps.insert("com.vendor.pkg".to_string(), "1.0.0".to_string());
+        let mut lock = Map::new();
+        lock.insert("com.vendor.pkg".to_string(), Value::Object(Map::new()));
+        assert!(lock_check_messages(&deps, &lock).is_empty());
     }
 }
