@@ -86,7 +86,7 @@ uupm registry token CustomUPM --clear
 uupm registry add CustomUPM https://registry.example.com/npm --token YOUR_TOKEN
 ```
 
-The same token is sent on registry **GET** requests (`install`, `freeze`, `upgrade`) and on **publish** PUT, matched by `scopedRegistries[].name` in `manifest.json` or by registry URL in `~/.upmrc`.
+The same token is sent on registry **GET** requests (`install`, `freeze`, `upgrade`, `info`, `search`) and on **publish** PUT, matched by `scopedRegistries[].name` in `manifest.json` or by registry URL in `~/.upmrc`.
 
 ### Publish a Unity package to a registry
 
@@ -116,6 +116,17 @@ uupm upgrade com.vendor.mypkg
 uupm remove com.vendor.mypkg
 ```
 
+### Inspect or search a Unity registry
+
+```bash
+uupm info com.unity.addressables
+uupm info com.vendor.mypkg -r CustomUPM
+uupm search addressables
+uupm s "my keywords" --limit 10
+```
+
+`info` fetches `{registry}/{package}` (same registry resolution as `install` when `Packages/manifest.json` exists). `search` calls npm-style `/-/v1/search`; many private Unity registries do not implement it and will return a non-success HTTP status.
+
 ### Manage Unity editor paths
 
 ```bash
@@ -136,6 +147,8 @@ uupm editor add 2022.3.16f1 "C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.16f1"
 | `list` | `ls` | List packages in `Packages/manifest.json` |
 | `upgrade` | `up` | Upgrade registry dependencies to the latest version |
 | `create` | `c` | Create a new Unity package scaffold |
+| `info` | - | Show package metadata from a Unity registry |
+| `search` | `s` | Search packages (npm `/-/v1/search` when supported) |
 | `publish` | `p` | Publish a package directory to a Unity registry |
 | `freeze` | `f` | Freeze manifest dependencies into local artifacts |
 | `registry` | `r` | Manage package registries |
@@ -196,6 +209,7 @@ The file is created automatically on first use. On Windows, `uupm editor scan` c
 - Install Unity registry packages and embed them as local `.tgz` files
 - Install NuGet packages as Unity package folders
 - List, upgrade, and remove manifest dependencies
+- Show registry metadata for a package (`info`) and optional npm search (`search`)
 - Create Unity package scaffolds
 - Publish packages to npm-compatible Unity registries
 - Freeze manifest dependencies into local artifacts

@@ -11,7 +11,8 @@ use std::fs;
 use std::path::Path;
 
 /// Add or update a UPM package in `Packages/manifest.json`.
-/// - `embed == false`: write a semver range string (Unity resolves from the registry).
+/// - `embed == false`: write an **exact** registry version string (e.g. `1.2.3`), the usual form in
+///   Unity `dependencies`. This CLI does not write npm-style ranges (`^`, `>=`, …).
 /// - `embed == true`: download `{name}-{version}.tgz` under `Packages/` and set `file:…` like `freeze`.
 ///
 /// Accepts `com.vendor.pkg` or `com.vendor.pkg@1.2.3`.

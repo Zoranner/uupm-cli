@@ -1,6 +1,7 @@
 mod config;
 mod create;
 mod freeze;
+mod info;
 mod manifest;
 mod meta;
 mod nuget;
@@ -69,6 +70,24 @@ enum Commands {
         /// Initial version (default: 0.1.0)
         #[arg(long, default_value = "0.1.0")]
         version: String,
+    },
+    /// Show package metadata from a Unity registry
+    Info {
+        /// Package name, e.g. com.vendor.mypackage
+        name: String,
+        /// Registry name from ~/.upmrc (defaults to scope / default registry)
+        #[arg(long, short = 'r')]
+        registry: Option<String>,
+    },
+    /// Search packages (npm /-/v1/search; not supported by all registries)
+    #[command(alias = "s")]
+    Search {
+        /// Search text
+        query: String,
+        #[arg(long, short = 'r')]
+        registry: Option<String>,
+        #[arg(long, default_value_t = 20usize)]
+        limit: usize,
     },
     /// Publish the package in the given directory to a UPM registry
     #[command(alias = "p")]
@@ -205,6 +224,16 @@ async fn main() -> Result<()> {
             version,
         }) => {
             create::create_package(&name, display_name.as_deref(), author.as_deref(), &version)?;
+        }
+        Some(Commands::Info { name, registry }) => {
+            info::print_package_info(&client, &name, registry.as_deref()).await?;
+        }
+        Some(Commands::Search {
+            query,
+            registry,
+            limit,
+        }) => {
+            info::print_search_results(&client, &query, registry.as_deref(), limit).await?;
         }
         Some(Commands::Publish { dir, registry }) => {
             publish::publish_package(&client, &dir, registry.as_deref()).await?;

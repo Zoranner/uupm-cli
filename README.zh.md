@@ -86,7 +86,7 @@ uupm registry token CustomUPM --clear
 uupm registry add CustomUPM https://registry.example.com/npm --token YOUR_TOKEN
 ```
 
-该令牌会用于注册表的 **GET**（`install`、`freeze`、`upgrade`）以及 **publish** 的 PUT；按 `manifest.json` 里 `scopedRegistries[].name` 或 `~/.upmrc` 中的注册表 URL 与源配置对齐后自动附加。
+该令牌会用于注册表的 **GET**（`install`、`freeze`、`upgrade`、`info`、`search`）以及 **publish** 的 PUT；按 `manifest.json` 里 `scopedRegistries[].name` 或 `~/.upmrc` 中的注册表 URL 与源配置对齐后自动附加。
 
 ### 将 Unity 包发布到注册表
 
@@ -116,6 +116,17 @@ uupm upgrade com.vendor.mypkg
 uupm remove com.vendor.mypkg
 ```
 
+### 查看注册表包信息或搜索
+
+```bash
+uupm info com.unity.addressables
+uupm info com.vendor.mypkg -r CustomUPM
+uupm search addressables
+uupm s "关键词" --limit 10
+```
+
+`info` 请求 `{registry}/{package}`；若当前目录存在 `Packages/manifest.json`，注册表选择与 `install` 一致（含 scoped）。`search` 使用 npm 的 `/-/v1/search`，不少私有 Unity 源未实现，会返回非 2xx。
+
 ### 管理 Unity 编辑器路径
 
 ```bash
@@ -136,6 +147,8 @@ uupm editor add 2022.3.16f1 "C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.16f1"
 | `list` | `ls` | 列出 `Packages/manifest.json` 中的依赖 |
 | `upgrade` | `up` | 将注册表依赖升级到最新版本 |
 | `create` | `c` | 创建 Unity 包脚手架 |
+| `info` | - | 查看 Unity 注册表上某包的元数据 |
+| `search` | `s` | 搜索包（需注册表支持 npm `/-/v1/search`） |
 | `publish` | `p` | 将包目录发布到 Unity 注册表 |
 | `freeze` | `f` | 将清单依赖冻结为本地制品 |
 | `registry` | `r` | 管理包注册表 |
@@ -196,6 +209,7 @@ UUPM 的用户级配置文件位于 `~/.upmrc`。
 - 安装 Unity 注册表包，并支持嵌入为本地 `.tgz`
 - 将 NuGet 包安装为 Unity 包目录
 - 列出、升级、移除清单依赖
+- 查看注册表包信息（`info`）与可选的 npm 搜索（`search`）
 - 创建 Unity 包脚手架
 - 向 npm 兼容的 Unity 注册表发布包
 - 冻结清单依赖为本地制品
