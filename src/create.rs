@@ -1,3 +1,4 @@
+use crate::output;
 use anyhow::{bail, Result};
 use std::fs;
 use std::path::Path;
@@ -67,11 +68,11 @@ pub fn create_package(
     // README.md
     fs::write(dir.join("README.md"), format!("# {display}\n"))?;
 
-    println!("Created package: {name}");
-    println!("  {}/", name);
-    println!("  {}/package.json", name);
-    println!("  {}/Scripts/{}.asmdef", name, asmdef_name);
-    println!("  {}/README.md", name);
+    output::success(format!("Created package: {name}"));
+    output::item_indent(format!("{name}/"));
+    output::item_indent(format!("{name}/package.json"));
+    output::item_indent(format!("{name}/Scripts/{asmdef_name}.asmdef"));
+    output::item_indent(format!("{name}/README.md"));
     Ok(())
 }
 

@@ -3,6 +3,7 @@ use crate::manifest::{
     dependencies_string_map, load_manifest_value, looks_like_npm_style_version_range,
     save_manifest_pretty, scoped_registries_from_value, RegistryPackageBody, MANIFEST_PATH,
 };
+use crate::output;
 use crate::versions::{cmp_version_strings, pick_latest_stable};
 use anyhow::{Context, Result};
 use reqwest::Client;
@@ -43,29 +44,31 @@ async fn upgrade_one(
         || pkg_version.starts_with("git:")
         || pkg_version.starts_with("https://")
     {
-        println!("Skipped (local/git): {pkg_name}@{pkg_version}");
+        output::note(format!("Skipped (local/git): {pkg_name}@{pkg_version}"));
         return Ok(());
     }
     // 跳过 Unity 内置模块
     if pkg_name.starts_with("com.unity.modules") || pkg_name.starts_with("com.unity.feature") {
-        println!("Skipped (builtin): {pkg_name}@{pkg_version}");
+        output::note(format!("Skipped (builtin): {pkg_name}@{pkg_version}"));
         return Ok(());
     }
 
     if looks_like_npm_style_version_range(pkg_version) {
-        println!(
+        output::note(format!(
             "Skipped (not plain SemVer; Unity manifest does not use npm ^/>= ranges): {pkg_name}@{pkg_version}"
-        );
+        ));
         return Ok(());
     }
 
     // NuGet 包走独立升级流程
     if pkg_name.starts_with("org.nuget.") {
         if dry_run {
-            println!("Dry-run: NuGet upgrade for {pkg_name} is not simulated; run without --dry-run to apply.");
+            output::warning(format!(
+                "Dry-run: NuGet upgrade for {pkg_name} is not simulated; run without --dry-run to apply."
+            ));
             return Ok(());
         }
-        println!("Upgrading NuGet: {pkg_name}…");
+        output::status(format!("Upgrading NuGet: {pkg_name}…"));
         crate::nuget::upgrade_nuget_package(client, pkg_name, None).await?;
         return Ok(());
     }
@@ -100,7 +103,7 @@ async fn upgrade_one(
         .with_context(|| format!("parse registry JSON for {pkg_name}"))?;
 
     if body.versions.is_empty() {
-        println!("Skipped (no versions): {pkg_name}");
+        output::note(format!("Skipped (no versions): {pkg_name}"));
         return Ok(());
     }
 
@@ -109,14 +112,14 @@ async fn upgrade_one(
         .with_context(|| format!("could not pick a version for {pkg_name}"))?;
 
     if cmp_version_strings(&latest, pkg_version).is_le() {
-        println!("Up to date: {pkg_name}@{pkg_version}");
+        output::note(format!("Up to date: {pkg_name}@{pkg_version}"));
         return Ok(());
     }
 
     if dry_run {
-        println!(
+        output::status(format!(
             "Would upgrade: {pkg_name}  {pkg_version} → {latest} (dry-run, manifest not changed)"
-        );
+        ));
         return Ok(());
     }
 
@@ -131,6 +134,6 @@ async fn upgrade_one(
         .context("manifest.dependencies missing")?;
     deps.insert(pkg_name.to_string(), Value::String(latest.clone()));
     save_manifest_pretty(MANIFEST_PATH, &manifest_v)?;
-    println!("Upgraded: {pkg_name}  {} → {}", pkg_version, latest);
+    output::success(format!("Upgraded: {pkg_name}  {pkg_version} → {latest}"));
     Ok(())
 }

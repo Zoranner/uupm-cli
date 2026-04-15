@@ -2,6 +2,7 @@ use crate::config::{origin_bearer_token, read_configs, resolve_origin_registry};
 use crate::manifest::{
     load_manifest_value, scoped_registries_from_value, RegistryPackageBody, MANIFEST_PATH,
 };
+use crate::output;
 use crate::versions::pick_latest_stable;
 use anyhow::{Context, Result};
 use reqwest::Client;
@@ -89,15 +90,15 @@ pub async fn print_package_info(
         .get("description")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    println!("Package:  {name}");
-    println!("Registry: {registry_url}");
+    output::labeled("Package", name);
+    output::labeled("Registry", registry_url);
     if !desc.is_empty() {
-        println!("Description: {desc}");
+        output::labeled("Description", desc);
     }
 
     if let Some(dt) = body.get("dist-tags").and_then(|v| v.as_object()) {
         if let Some(latest) = dt.get("latest").and_then(|v| v.as_str()) {
-            println!("dist-tags.latest: {latest}");
+            output::labeled("dist-tags.latest", latest);
         }
     }
 
@@ -107,15 +108,15 @@ pub async fn print_package_info(
             let keys: Vec<String> = pkg.versions.keys().cloned().collect();
             let latest_pick = pick_latest_stable(&keys).ok();
             if let Some(v) = latest_pick {
-                println!("Latest (stable heuristic): {v}");
+                output::labeled("Latest (stable heuristic)", v);
             }
-            println!("Versions ({}):", keys.len());
+            output::status(format!("Versions ({}):", keys.len()));
             let show: Vec<&String> = keys.iter().rev().take(25).collect();
             for v in show.iter().rev() {
-                println!("  {v}");
+                output::item_indent(v);
             }
             if keys.len() > 25 {
-                println!("  … {} more", keys.len() - 25);
+                output::item_indent_dim(format!("… {} more", keys.len() - 25));
             }
         } else if let Some(vers) = body.get("versions").and_then(|v| v.as_object()) {
             print_version_keys(vers);
@@ -128,14 +129,14 @@ pub async fn print_package_info(
 }
 
 fn print_version_keys(vers: &serde_json::Map<String, Value>) {
-    println!("Versions ({}):", vers.len());
+    output::status(format!("Versions ({}):", vers.len()));
     let mut keys: Vec<&str> = vers.keys().map(String::as_str).collect();
     keys.sort();
     for v in keys.iter().rev().take(25).rev() {
-        println!("  {v}");
+        output::item_indent(v);
     }
     if keys.len() > 25 {
-        println!("  … {} more", keys.len() - 25);
+        output::item_indent_dim(format!("… {} more", keys.len() - 25));
     }
 }
 
@@ -170,23 +171,23 @@ pub async fn print_search_results(
     }
     let resp = req.send().await?;
     if !resp.status().is_success() {
-        println!(
+        output::warning(format!(
             "Search is not available or failed (HTTP {}). Many private Unity registries do not implement npm's /-/v1/search.",
             resp.status().as_u16()
-        );
+        ));
         return Ok(());
     }
     let body: Value = resp.json().await.context("parse search JSON")?;
 
     let Some(objects) = body.get("objects").and_then(|v| v.as_array()) else {
-        println!("Unexpected search response (no objects array).");
+        output::warning("Unexpected search response (no objects array).");
         return Ok(());
     };
     if objects.is_empty() {
-        println!("No packages matched {:?}.", query);
+        output::note(format!("No packages matched {:?}.", query));
         return Ok(());
     }
-    println!("Registry: {registry_url}");
+    output::labeled("Registry", registry_url);
     for obj in objects {
         let Some(pkg) = obj.get("package") else {
             continue;
@@ -201,7 +202,7 @@ pub async fn print_search_results(
                     .and_then(|v| v.as_str())
             })
             .unwrap_or("-");
-        println!("{name}@{ver}");
+        output::raw(format!("{name}@{ver}"));
     }
     Ok(())
 }

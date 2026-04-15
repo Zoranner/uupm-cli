@@ -1,4 +1,5 @@
 use crate::manifest::ScopedRegistry;
+use crate::output;
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -352,8 +353,12 @@ pub fn set_default_registry(name: &str, kind: RegistryKind) -> Result<()> {
 pub fn list_registries(kind: RegistryKind) -> Result<()> {
     let c = read_configs()?;
     match kind {
-        RegistryKind::Origin => println!("{}", toml::to_string_pretty(&c.registry.origin.sources)?),
-        RegistryKind::Nuget => println!("{}", toml::to_string_pretty(&c.registry.nuget.sources)?),
+        RegistryKind::Origin => {
+            output::raw(toml::to_string_pretty(&c.registry.origin.sources)?);
+        }
+        RegistryKind::Nuget => {
+            output::raw(toml::to_string_pretty(&c.registry.nuget.sources)?);
+        }
     }
     Ok(())
 }
@@ -451,7 +456,7 @@ pub fn set_default_editor(name: &str) -> Result<()> {
 
 pub fn list_editors() -> Result<()> {
     let c = read_configs()?;
-    println!("{}", toml::to_string_pretty(&c.editor.versions)?);
+    output::raw(toml::to_string_pretty(&c.editor.versions)?);
     Ok(())
 }
 
@@ -464,7 +469,7 @@ pub fn scan_and_merge_editors() -> Result<()> {
         c.editor.default = c.editor.versions.keys().last().cloned().unwrap_or_default();
     }
     write_configs(&c)?;
-    println!("Editor entries updated.");
+    output::success("Editor entries updated.");
     Ok(())
 }
 

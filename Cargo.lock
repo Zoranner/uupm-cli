@@ -1637,6 +1637,7 @@ dependencies = [
  "anyhow",
  "base64",
  "clap",
+ "console",
  "dialoguer",
  "dirs",
  "flate2",

@@ -3,9 +3,10 @@ use crate::manifest::{
     dependencies_string_map, load_manifest_value, save_manifest_pretty,
     scoped_registries_from_value, RegistryPackageBody, MANIFEST_PATH,
 };
+use crate::output;
 use crate::spinner::{step_spinner, SpinnerSuccess};
 use anyhow::{Context, Result};
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::Select;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -39,7 +40,7 @@ pub struct FreezeOutcome {
 
 impl SpinnerSuccess for FreezeOutcome {
     fn print_success(&self) {
-        println!("✔ {}", self.msg);
+        output::success(&self.msg);
     }
 }
 
@@ -54,7 +55,9 @@ pub async fn freeze_packages(client: &Client) -> Result<()> {
     let editor_path = select_unity_version(&configs)?;
 
     if !Path::new(MANIFEST_PATH).exists() {
-        println!("No {MANIFEST_PATH} file exists in the current directory.");
+        output::note(format!(
+            "No {MANIFEST_PATH} file exists in the current directory."
+        ));
         return Ok(());
     }
     let mut manifest_v = load_manifest_value(MANIFEST_PATH)?;
@@ -141,7 +144,7 @@ fn select_unity_version(configs: &crate::config::GlobalConfig) -> Result<String>
             .context("selected editor path missing");
     }
     let labels: Vec<&str> = keys.iter().map(String::as_str).collect();
-    let sel = Select::with_theme(&ColorfulTheme::default())
+    let sel = Select::with_theme(&output::dialoguer_theme())
         .with_prompt("Please select the Unity version:")
         .items(&labels)
         .default(0)

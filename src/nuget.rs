@@ -1,5 +1,6 @@
 use crate::config::read_configs;
 use crate::meta::{generate_meta_files, MetaTemplateManager};
+use crate::output;
 use crate::spinner::step_spinner;
 use crate::versions::pick_latest_stable;
 use anyhow::{anyhow, Context, Result};
@@ -41,7 +42,7 @@ pub async fn upgrade_nuget_package(
     let meta_manager = MetaTemplateManager::new()?;
     let mut queue = VecDeque::new();
     let mut installed: HashSet<String> = HashSet::new();
-    println!("\n> {}", pascal);
+    output::section_title(&pascal);
     resolve_one(
         client,
         &meta_manager,
@@ -58,7 +59,7 @@ pub async fn upgrade_nuget_package(
             continue;
         }
         installed.insert(spec.clone());
-        println!("\n> {}", spec);
+        output::section_title(&spec);
         resolve_one(
             client,
             &meta_manager,
@@ -87,7 +88,7 @@ pub async fn install_nuget_package(
             continue;
         }
         installed.insert(spec.clone());
-        println!("\n> {}", spec);
+        output::section_title(&spec);
         resolve_one(
             client,
             &meta_manager,
@@ -152,7 +153,7 @@ async fn resolve_one(
         pick_latest_stable(&version_strings)?
     };
 
-    println!("Found: {pascal_name}@{target_version}");
+    output::note(format!("Resolved: {pascal_name}@{target_version}"));
 
     let unity_pkg_path =
         Path::new(PACKAGES_PATH).join(format!("{unity_pkg_name}-{target_version}"));

@@ -1,4 +1,5 @@
 use crate::manifest::{load_manifest_value, save_manifest_pretty, MANIFEST_PATH};
+use crate::output;
 use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::Path;
@@ -27,11 +28,11 @@ pub fn remove_package(name: &str) -> Result<()> {
         let artifact = Path::new("Packages").join(file_ref);
         if artifact.is_file() {
             fs::remove_file(&artifact).with_context(|| format!("remove {}", artifact.display()))?;
-            println!("Removed file: {}", artifact.display());
+            output::note(format!("Removed file: {}", artifact.display()));
         } else if artifact.is_dir() {
             fs::remove_dir_all(&artifact)
                 .with_context(|| format!("remove dir {}", artifact.display()))?;
-            println!("Removed dir: {}", artifact.display());
+            output::note(format!("Removed dir: {}", artifact.display()));
         }
         // 同时删除对应 .meta（如果存在）
         let meta = Path::new("Packages").join(format!("{file_ref}.meta"));
@@ -52,7 +53,7 @@ pub fn remove_package(name: &str) -> Result<()> {
                 if fname_str.starts_with(&prefix) && entry.path().is_dir() {
                     fs::remove_dir_all(entry.path())
                         .with_context(|| format!("remove dir {}", entry.path().display()))?;
-                    println!("Removed dir: {}", entry.path().display());
+                    output::note(format!("Removed dir: {}", entry.path().display()));
                     // .meta
                     let meta = packages_dir.join(format!("{fname_str}.meta"));
                     if meta.exists() {
@@ -64,6 +65,6 @@ pub fn remove_package(name: &str) -> Result<()> {
     }
 
     save_manifest_pretty(MANIFEST_PATH, &manifest_v)?;
-    println!("Removed {name} from manifest.");
+    output::success(format!("Removed {name} from manifest."));
     Ok(())
 }

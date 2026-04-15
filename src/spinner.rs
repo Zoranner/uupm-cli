@@ -1,3 +1,4 @@
+use crate::output;
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::future::Future;
@@ -8,7 +9,7 @@ pub trait SpinnerSuccess {
 
 impl SpinnerSuccess for String {
     fn print_success(&self) {
-        println!("✔ {}", self);
+        output::success(self);
     }
 }
 
@@ -19,7 +20,7 @@ where
 {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
-        ProgressStyle::with_template("{spinner:.yellow} {msg}")
+        ProgressStyle::with_template("{spinner:.cyan} {msg}")
             .unwrap()
             .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     );
@@ -33,7 +34,7 @@ where
         }
         Err(e) => {
             pb.finish_and_clear();
-            anyhow::bail!("[BREAK] {}", e);
+            Err(e)
         }
     }
 }

@@ -6,6 +6,7 @@ mod info;
 mod manifest;
 mod meta;
 mod nuget;
+mod output;
 mod publish;
 mod remove;
 mod spinner;
@@ -193,13 +194,13 @@ enum EditorCli {
 }
 
 fn print_banner() {
-    println!();
-    println!(r" _   _ ____  ____  __  __ ");
-    println!(r"| | | |  _ \|  _ \|  \/  |");
-    println!(r"| |_| | |_) | |_) | |\/| |");
-    println!(r" \___/| .__/| .__/|_|  |_|");
-    println!(r"      |_|   |_|           ");
-    println!();
+    output::blank();
+    output::raw(r" _   _ ____  ____  __  __ ");
+    output::raw(r"| | | |  _ \|  _ \|  \/  |");
+    output::raw(r"| |_| | |_) | |_) | |\/| |");
+    output::raw(r" \___/| .__/| .__/|_|  |_|");
+    output::raw(r"      |_|   |_|           ");
+    output::blank();
 }
 
 #[tokio::main]
@@ -223,14 +224,14 @@ async fn main() -> Result<()> {
                     bail!("--git cannot be used together with a NuGet source name");
                 }
                 upm::install_git_dependency(&name, &url)?;
-                println!("Install finished!");
+                output::success("Install finished.");
             } else if nuget {
                 nuget::install_nuget_package(&client, &name, source.as_deref()).await?;
-                println!("Install finished!");
+                output::success("Install finished.");
             } else {
-                println!("Installing UPM package: {name}...");
+                output::status(format!("Installing UPM package: {name}…"));
                 upm::install_upm_package(&client, &name, embed).await?;
-                println!("Install finished!");
+                output::success("Install finished.");
             }
         }
         Some(Commands::Remove { name }) => {
@@ -242,9 +243,9 @@ async fn main() -> Result<()> {
         Some(Commands::Upgrade { name, dry_run }) => {
             upgrade::upgrade_packages(&client, name.as_deref(), dry_run).await?;
             if dry_run {
-                println!("Dry-run finished.");
+                output::success("Dry-run finished.");
             } else {
-                println!("Upgrade finished!");
+                output::success("Upgrade finished.");
             }
         }
         Some(Commands::Create {
@@ -268,15 +269,15 @@ async fn main() -> Result<()> {
         Some(Commands::Pack { dir, output }) => {
             let path =
                 publish::pack_package_directory(Path::new(&dir), output.as_deref().map(Path::new))?;
-            println!("{}", path.display());
+            output::raw(path.display());
         }
         Some(Commands::Publish { dir, registry }) => {
             publish::publish_package(&client, &dir, registry.as_deref()).await?;
         }
         Some(Commands::Freeze) => {
-            println!("Freezing project packages...");
+            output::status("Freezing project packages…");
             freeze::freeze_packages(&client).await?;
-            println!("Freeze finished!");
+            output::success("Freeze finished.");
         }
         Some(Commands::Doctor) => {
             doctor::run()?;
@@ -344,13 +345,13 @@ async fn main() -> Result<()> {
 
 fn list_packages() -> Result<()> {
     if !Path::new(MANIFEST_PATH).exists() {
-        println!("No {} found.", MANIFEST_PATH);
+        output::note(format!("No {} found.", MANIFEST_PATH));
         return Ok(());
     }
     let manifest_v = load_manifest_value(MANIFEST_PATH)?;
     let deps = dependencies_string_map(&manifest_v);
     if deps.is_empty() {
-        println!("No dependencies.");
+        output::note("No dependencies.");
         return Ok(());
     }
     let name_w = deps.keys().map(|k| k.len()).max().unwrap_or(0);
@@ -364,7 +365,7 @@ fn list_packages() -> Result<()> {
         } else {
             "registry"
         };
-        println!("{:<width$}  {}  ({})", name, version, kind, width = name_w);
+        output::manifest_row(name, version, kind, name_w);
     }
     Ok(())
 }

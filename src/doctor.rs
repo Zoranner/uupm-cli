@@ -1,6 +1,7 @@
 use crate::manifest::{
     dependencies_string_map, load_manifest_value, looks_like_npm_style_version_range, MANIFEST_PATH,
 };
+use crate::output;
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 use std::fs;
@@ -14,11 +15,11 @@ pub fn run() -> Result<()> {
     let mut warnings = 0usize;
 
     if !Path::new("Packages").is_dir() {
-        println!("Note: ./Packages not found; use Unity project root for full checks.");
+        output::note("No ./Packages directory; use Unity project root for full checks.");
     }
 
     if !Path::new(MANIFEST_PATH).exists() {
-        println!("No {} in this directory.", MANIFEST_PATH);
+        output::note(format!("No {} in this directory.", MANIFEST_PATH));
         return Ok(());
     }
 
@@ -27,17 +28,17 @@ pub fn run() -> Result<()> {
 
     for (name, ver) in &deps {
         if looks_like_npm_style_version_range(ver) {
-            println!(
-                "Error: dependency {:?} has {:?} (npm-style range; Unity expects plain SemVer for registry entries)",
+            output::error_line(format!(
+                "dependency {:?} has {:?} (npm-style range; Unity expects plain SemVer for registry entries)",
                 name, ver
-            );
+            ));
             errors += 1;
         }
 
         if let Some(rest) = ver.strip_prefix("file:") {
             let p = Path::new("Packages").join(rest);
             if !p.exists() {
-                println!("Error: {:?} → missing path {}", name, p.display());
+                output::error_line(format!("{:?} → missing path {}", name, p.display()));
                 errors += 1;
             }
         }
@@ -50,16 +51,19 @@ pub fn run() -> Result<()> {
             Ok(lock) => {
                 if let Some(lock_obj) = lock.as_object() {
                     for msg in lock_check_messages(&deps, lock_obj) {
-                        println!("{msg}");
+                        output::warning(msg);
                         warnings += 1;
                     }
                 } else {
-                    println!("Error: {} root must be a JSON object", PACKAGES_LOCK_PATH);
+                    output::error_line(format!(
+                        "{} root must be a JSON object",
+                        PACKAGES_LOCK_PATH
+                    ));
                     errors += 1;
                 }
             }
             Err(e) => {
-                println!("Error: invalid JSON in {}: {}", PACKAGES_LOCK_PATH, e);
+                output::error_line(format!("invalid JSON in {}: {}", PACKAGES_LOCK_PATH, e));
                 errors += 1;
             }
         }
@@ -67,18 +71,18 @@ pub fn run() -> Result<()> {
 
     if errors == 0 {
         if warnings == 0 {
-            println!(
-                "OK: {} — {} direct dependencies, no issues reported.",
+            output::success(format!(
+                "{} — {} direct dependencies, no issues reported.",
                 MANIFEST_PATH,
                 deps.len()
-            );
+            ));
         } else {
-            println!(
-                "OK: {} — {} direct dependencies, {} warning(s) above.",
+            output::warning(format!(
+                "{} — {} direct dependencies, {} warning(s) above.",
                 MANIFEST_PATH,
                 deps.len(),
                 warnings
-            );
+            ));
         }
         Ok(())
     } else {
@@ -102,7 +106,7 @@ fn lock_check_messages(
 
         let Some(entry) = lock_obj.get(name) else {
             out.push(format!(
-                "Warning: {:?} is in manifest but not in {} (re-resolve in Unity Editor)",
+                "{:?} is in manifest but not in {} (re-resolve in Unity Editor)",
                 name, PACKAGES_LOCK_PATH
             ));
             continue;
@@ -112,7 +116,7 @@ fn lock_check_messages(
         };
         if lock_ver != ver.as_str() {
             out.push(format!(
-                "Warning: {:?} manifest version {:?} differs from lock {:?}",
+                "{:?} manifest version {:?} differs from lock {:?}",
                 name, ver, lock_ver
             ));
         }

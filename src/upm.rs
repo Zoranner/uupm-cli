@@ -3,6 +3,7 @@ use crate::manifest::{
     empty_manifest_object, load_manifest_value, save_manifest_pretty, scoped_registries_from_value,
     upsert_scoped_registry, RegistryPackageBody, MANIFEST_PATH,
 };
+use crate::output;
 use crate::versions::pick_latest_stable;
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
@@ -57,7 +58,7 @@ pub async fn install_upm_package(client: &Client, spec: &str, embed: bool) -> Re
     let token = origin_bearer_token(&configs, &registry_url, matched);
 
     let fetch_url = format!("{registry_url}/{package_name}");
-    println!("Fetching {} …", fetch_url);
+    output::step(format!("Fetching {fetch_url}…"));
     let mut req = client.get(&fetch_url);
     if let Some(t) = token {
         req = req.bearer_auth(t);
@@ -95,7 +96,7 @@ pub async fn install_upm_package(client: &Client, spec: &str, embed: bool) -> Re
     let dep_string = if embed {
         let tarball_name = format!("{package_name}-{chosen}.tgz");
         let download_url = &version_info.dist.tarball;
-        println!("Downloading {} …", download_url);
+        output::step(format!("Downloading {download_url}…"));
         let mut t_req = client.get(download_url.as_str());
         if let Some(t) = token {
             t_req = t_req.bearer_auth(t);
@@ -129,15 +130,13 @@ pub async fn install_upm_package(client: &Client, spec: &str, embed: bool) -> Re
     save_manifest_pretty(MANIFEST_PATH, &manifest_v)?;
 
     if embed {
-        println!(
-            "Added {} → {} in {} (tarball under Packages/, registry {}).",
-            package_name, dep_string, MANIFEST_PATH, registry_url
-        );
+        output::success(format!(
+            "Added {package_name} → {dep_string} in {MANIFEST_PATH} (tarball under Packages/, registry {registry_url})."
+        ));
     } else {
-        println!(
-            "Added {}@{} to {} (registry: {}).",
-            package_name, chosen, MANIFEST_PATH, registry_url
-        );
+        output::success(format!(
+            "Added {package_name}@{chosen} to {MANIFEST_PATH} (registry: {registry_url})."
+        ));
     }
     Ok(())
 }
@@ -192,6 +191,6 @@ pub fn install_git_dependency(package_name: &str, git_url: &str) -> Result<()> {
 
     fs::create_dir_all("Packages")?;
     save_manifest_pretty(MANIFEST_PATH, &manifest_v)?;
-    println!("Added {name} → {url} in {MANIFEST_PATH}");
+    output::success(format!("Added {name} → {url} in {MANIFEST_PATH}"));
     Ok(())
 }

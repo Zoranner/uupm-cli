@@ -1,4 +1,5 @@
 use crate::config::{read_configs, resolve_origin_registry};
+use crate::output;
 use anyhow::{bail, Context, Result};
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use flate2::{write::GzEncoder, Compression};
@@ -65,7 +66,9 @@ pub async fn publish_package(client: &Client, dir: &str, registry: Option<&str>)
     };
     let registry_url = reg_src.url.trim_end_matches('/');
 
-    println!("Publishing {name}@{version} to {reg_name} ({registry_url})…");
+    output::status(format!(
+        "Publishing {name}@{version} to {reg_name} ({registry_url})…"
+    ));
 
     // 打 tarball（npm 约定：目录内容放在 package/ 前缀下）
     let tarball_bytes = build_tarball(pkg_dir)?;
@@ -119,7 +122,10 @@ pub async fn publish_package(client: &Client, dir: &str, registry: Option<&str>)
         .with_context(|| format!("registry rejected publish for {name}@{version}"))?;
 
     let status = resp.status();
-    println!("Published {name}@{version}  (HTTP {})", status.as_u16());
+    output::success(format!(
+        "Published {name}@{version} (HTTP {})",
+        status.as_u16()
+    ));
     Ok(())
 }
 
