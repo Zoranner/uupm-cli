@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
+#[cfg(windows)]
 use std::process::Command;
 
 // ---------------------------------------------------------------------------
