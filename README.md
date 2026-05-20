@@ -15,7 +15,17 @@ UUPM manages Unity registry sources, installs packages from Unity registries and
 
 ## Quick Start
 
-Install from the repository root:
+Install the latest GitHub Release:
+
+```powershell
+irm https://raw.githubusercontent.com/Zoranner/uupm-cli/master/install.ps1 | iex
+```
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zoranner/uupm-cli/master/install.sh | sh
+```
+
+The installer checks the currently installed version and updates it when a newer release is available. To install from the repository root instead:
 
 ```bash
 cargo install --path .
@@ -95,7 +105,7 @@ uupm registry token CustomUPM --clear
 uupm registry add CustomUPM https://registry.example.com/npm --token YOUR_TOKEN
 ```
 
-The same token is sent on registry **GET** requests (`install`, `freeze`, `upgrade`, `info`, `search`) and on **publish** PUT, matched by `scopedRegistries[].name` in `manifest.json` or by registry URL in `~/.upmrc`.
+The same token is sent on registry **GET** requests (`install`, `freeze`, `upgrade`, `info`, `search`) and on **publish** PUT, matched by `scopedRegistries[].name` in `manifest.json` or by registry URL in `~/.upmrc.toml`.
 
 ### Publish a Unity package to a registry
 
@@ -106,7 +116,7 @@ uupm publish
 uupm p ./path/to/com.vendor.mypkg -r CustomUPM
 ```
 
-If you omit `-r`, the registry is chosen from `~/.upmrc` using scope rules (same as install). The request uses an npm-compatible PUT with a `package/` tarball; set a token on that registry if the server requires authentication.
+If you omit `-r`, the registry is chosen from `~/.upmrc.toml` using scope rules (same as install). The request uses an npm-compatible PUT with a `package/` tarball; set a token on that registry if the server requires authentication.
 
 Tarball contents respect `.npmignore` when present (git-style comments supported), and always skip common junk such as `.git`, `node_modules`, and `.npmignore` itself.
 
@@ -198,7 +208,7 @@ uupm install <name> [source]
 - `--embed` downloads a `.tgz` into `Packages` and writes a `file:` dependency.
 - `--git <url>` writes a Git URL dependency (optional `#revision`); cannot be combined with `-n`, `--embed`, or a NuGet `[source]` argument.
 - `-n` or `--nuget` switches the workflow to NuGet.
-- `[source]` is only used with NuGet and refers to a configured source name in `~/.upmrc`.
+- `[source]` is only used with NuGet and refers to a configured source name in `~/.upmrc.toml`.
 
 ### `registry`
 
@@ -224,7 +234,7 @@ Use `-n` to operate on NuGet registries instead of Unity registries.
 
 ## Configuration
 
-UUPM stores user-level configuration in `~/.upmrc`.
+UUPM stores user-level configuration in `~/.upmrc.toml`.
 
 | Section | Purpose |
 |--------|------|

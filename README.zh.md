@@ -15,7 +15,17 @@ UUPM 用于管理 Unity 注册表源、安装 Unity 注册表与 NuGet 上的依
 
 ## 快速开始
 
-在仓库根目录安装：
+安装最新 GitHub Release：
+
+```powershell
+irm https://raw.githubusercontent.com/Zoranner/uupm-cli/master/install.ps1 | iex
+```
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zoranner/uupm-cli/master/install.sh | sh
+```
+
+安装脚本会检查本机已安装版本，有新版本时自动覆盖更新。也可以在仓库根目录安装：
 
 ```bash
 cargo install --path .
@@ -95,7 +105,7 @@ uupm registry token CustomUPM --clear
 uupm registry add CustomUPM https://registry.example.com/npm --token YOUR_TOKEN
 ```
 
-该令牌会用于注册表的 **GET**（`install`、`freeze`、`upgrade`、`info`、`search`）以及 **publish** 的 PUT；按 `manifest.json` 里 `scopedRegistries[].name` 或 `~/.upmrc` 中的注册表 URL 与源配置对齐后自动附加。
+该令牌会用于注册表的 **GET**（`install`、`freeze`、`upgrade`、`info`、`search`）以及 **publish** 的 PUT；按 `manifest.json` 里 `scopedRegistries[].name` 或 `~/.upmrc.toml` 中的注册表 URL 与源配置对齐后自动附加。
 
 ### 将 Unity 包发布到注册表
 
@@ -106,7 +116,7 @@ uupm publish
 uupm p ./path/to/com.vendor.mypkg -r CustomUPM
 ```
 
-省略 `-r` 时，会按与安装相同的 scope 规则从 `~/.upmrc` 选择注册表。请求体为 npm 兼容的 PUT，并附带 `package/` 前缀的 tarball；若服务端需要鉴权，请为该注册表配置 `token`。
+省略 `-r` 时，会按与安装相同的 scope 规则从 `~/.upmrc.toml` 选择注册表。请求体为 npm 兼容的 PUT，并附带 `package/` 前缀的 tarball；若服务端需要鉴权，请为该注册表配置 `token`。
 
 打包时会读取目录下的 `.npmignore`（支持 `#` 注释），并始终排除 `.git`、`node_modules` 等常见无关内容以及根目录的 `.npmignore` 文件本身。
 
@@ -198,7 +208,7 @@ uupm install <name> [source]
 - `--embed` 会将包下载为 `Packages` 下的 `.tgz` 并写入 `file:` 依赖。
 - `--git <url>` 写入 Git URL 依赖（可选 `#revision`）；不能与 `-n`、`--embed` 或 NuGet 的 `[source]` 参数同时使用。
 - `-n` 或 `--nuget` 会切换到 NuGet 安装流程。
-- `[source]` 仅在 NuGet 模式下生效，表示 `~/.upmrc` 中已配置的源名称。
+- `[source]` 仅在 NuGet 模式下生效，表示 `~/.upmrc.toml` 中已配置的源名称。
 
 ### `registry`
 
@@ -224,7 +234,7 @@ uupm install <name> [source]
 
 ## 配置
 
-UUPM 的用户级配置文件位于 `~/.upmrc`。
+UUPM 的用户级配置文件位于 `~/.upmrc.toml`。
 
 | 配置段 | 作用 |
 |--------|------|
